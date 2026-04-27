@@ -76,9 +76,8 @@ Key variables:
 
 ## Design
 
-Based on Alexander Bokovoy's design document
-"Considerations for RHEL IdM in RHEL Image Mode," which establishes that
-IdM installers are compatible with bootc's filesystem constraints.
+IdM installers only write to `/etc` and `/var`, making them compatible
+with bootc's immutable root filesystem.
 
 Key design decisions:
 - **Monolithic image** — keeps FreeIPA's tightly coupled services together
@@ -90,7 +89,7 @@ Key design decisions:
 
 ## Project Status
 
-Phase 1 (Server Image + First Boot) — in progress
+Phase 2 (Client + Replica) — complete. 53 tests passing across 3-node topology.
 
 ## License
 
