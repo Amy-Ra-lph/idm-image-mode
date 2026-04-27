@@ -1,0 +1,33 @@
+# Containerfile.server — bootc image for FreeIPA/IdM server (primary or replica)
+#
+# This image contains all packages needed to run an IdM domain controller.
+# The same image is used for both primary and replica roles — the IDM_ROLE
+# variable in config.env determines which installer runs at first boot.
+#
+# Build:
+#   podman build -t localhost/idm-image-mode-server:latest -f Containerfile.server .
+#
+# For bootc disk image conversion:
+#   sudo podman run --rm -it --privileged --pull=newer \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type qcow2 \
+#     localhost/idm-image-mode-server:latest
+
+FROM quay.io/fedora/fedora-bootc:44
+
+# Install FreeIPA server with DNS and AD trust support
+RUN dnf install -y \
+        freeipa-server \
+        freeipa-server-dns \
+        freeipa-server-trust-ad \
+    && dnf clean all
+
+# Install the first-boot provisioning service
+COPY config/idm-firstboot.sh /usr/local/sbin/idm-firstboot
+COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
+COPY config/config.env.example /etc/idm-image-mode/config.env.example
+
+RUN chmod 755 /usr/local/sbin/idm-firstboot \
+    && mkdir -p /var/lib/idm-image-mode \
+    && systemctl enable idm-firstboot.service

@@ -1,0 +1,24 @@
+[Unit]
+Description=IdM Image Mode First Boot Provisioning
+Documentation=https://github.com/Amy-Ra-lph/idm-image-mode
+After=network-online.target
+Wants=network-online.target
+
+# Only run if not already provisioned AND config exists
+ConditionPathExists=!/var/lib/idm-image-mode/.firstboot-complete
+ConditionPathExists=/etc/idm-image-mode/config.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=1800
+
+ExecStartPre=/usr/bin/mkdir -p /var/lib/idm-image-mode
+ExecStart=/usr/local/sbin/idm-firstboot
+ExecStartPost=/usr/bin/touch /var/lib/idm-image-mode/.firstboot-complete
+
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

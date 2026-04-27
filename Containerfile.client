@@ -1,0 +1,25 @@
+# Containerfile.client — bootc image for FreeIPA/IdM client (domain member)
+#
+# This image contains the packages needed to enroll a system into an
+# IdM domain as a member. Uses the same first-boot provisioning pattern
+# as the server image — IDM_ROLE=client in config.env drives ipa-client-install.
+#
+# Build:
+#   podman build -t localhost/idm-image-mode-client:latest -f Containerfile.client .
+
+FROM quay.io/fedora/fedora-bootc:44
+
+# Install FreeIPA client and admin tools
+RUN dnf install -y \
+        freeipa-client \
+        freeipa-admintools \
+    && dnf clean all
+
+# Install the first-boot provisioning service
+COPY config/idm-firstboot.sh /usr/local/sbin/idm-firstboot
+COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
+COPY config/config.env.example /etc/idm-image-mode/config.env.example
+
+RUN chmod 755 /usr/local/sbin/idm-firstboot \
+    && mkdir -p /var/lib/idm-image-mode \
+    && systemctl enable idm-firstboot.service
