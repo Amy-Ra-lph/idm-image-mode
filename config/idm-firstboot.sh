@@ -52,10 +52,23 @@ fi
 # Containers share the host clock — skip NTP (chronyd needs SYS_TIME)
 CONTAINER_ARGS=(--no-ntp)
 
-# Replace systemd-resolved stub with a working resolver
-if grep -q '127.0.0.53' /etc/resolv.conf 2>/dev/null; then
-    log_info "Replacing systemd-resolved stub in /etc/resolv.conf"
+# Disable systemd-resolved — it manages /etc/resolv.conf as a symlink
+# to a stub that breaks IPA DNS. Replace with a static file.
+if systemctl is-active systemd-resolved &>/dev/null; then
+    log_info "Disabling systemd-resolved (incompatible with IPA DNS)"
+    systemctl stop systemd-resolved
+    systemctl disable systemd-resolved
+    rm -f /etc/resolv.conf
     echo "nameserver ${IDM_DNS_FORWARDER:-8.8.8.8}" > /etc/resolv.conf
+fi
+
+# Add /etc/hosts entries for the primary server so reverse lookups work
+# in the Podman network (no reverse DNS zone by default)
+if [[ -n "${IDM_SERVER_IP:-}" && -n "${IDM_SERVER_FQDN:-}" ]]; then
+    if ! grep -q "${IDM_SERVER_FQDN}" /etc/hosts 2>/dev/null; then
+        log_info "Adding ${IDM_SERVER_FQDN} to /etc/hosts"
+        echo "${IDM_SERVER_IP} ${IDM_SERVER_FQDN}" >> /etc/hosts
+    fi
 fi
 
 # ── Install Based on Role ────────────────────────────────────────────
@@ -124,7 +137,11 @@ case "$IDM_ROLE" in
         # Step 2: Promote to replica
         log_info "Step 2/2: Promoting to replica..."
 
-        replica_args=(--unattended)
+        replica_args=(
+            --principal=admin
+            --admin-password="${IDM_ADMIN_PASSWORD}"
+            --unattended
+        )
 
         if [[ "${IDM_REPLICA_SETUP_DNS:-yes}" == "yes" ]]; then
             replica_args+=(--setup-dns)

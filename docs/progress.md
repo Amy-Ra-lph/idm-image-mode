@@ -28,15 +28,28 @@
 - Subnet 10.89.0.0/24 in use → changed to 10.99.0.0/24
 - IPA services need ~20s to settle after container restart
 
-## Phase 2: Client Image + Replica — NOT STARTED
+## Phase 2: Client Image + Replica — COMPLETE
+
+**Date:** 2026-04-27
+**Result:** Full 3-node topology running in rootless Podman — primary + replica + client
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Client enrollment against primary | | Deploy client container, verify `id admin@REALM` |
-| Replica join | | Deploy replica, verify `ipactl status`, replication |
-| test-firstboot-client.sh | | Client enrollment tests |
-| test-firstboot-replica.sh | | Replica join + topology tests |
-| test-replication.sh | | Cross-node LDAP replication |
+| Client enrollment against primary | Done | `id admin@TEST.EXAMPLE.COM` resolves, kinit works |
+| Replica join | Done | 2-step: ipa-client-install → ipa-replica-install |
+| Bidirectional replication | Done | Users created on either server appear on the other within seconds |
+| HBAC + Sudo policies | Done | Rules enforced across topology |
+| config.env.client | Done | Client config pointing to primary at 10.99.0.10 |
+| config.env.replica | Done | Replica config with DNS and CA setup |
+| test-firstboot-client.sh | Done | 12/12 pass — enrollment, SSSD, Kerberos, idempotency |
+| test-firstboot-replica.sh | Done | 16/16 pass — services, topology, bidir replication, idempotency |
+| test-policies.sh | Done | 12/12 pass — HBAC rules, sudo rules, bidir policy creation |
+
+**Issues found & fixed:**
+- systemd-resolved must be fully stopped/disabled (not just resolv.conf overwrite) — it manages resolv.conf as a symlink
+- Replica needs /etc/hosts entry for primary (no reverse DNS with --no-reverse)
+- `--no-ntp` invalid during ipa-replica-install (NTP already configured by client step)
+- ipa-replica-install needs explicit `--principal=admin --admin-password=...`
 
 ## Phase 3: Mixed Topology Testing — NOT STARTED
 

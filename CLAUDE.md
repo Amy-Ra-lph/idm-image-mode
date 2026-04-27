@@ -45,8 +45,8 @@ tests/
 - All scripts source `scripts/lib/common.sh` for logging and helpers.
 - Image naming: `localhost/idm-image-mode-{server,client}:latest`
 - Container naming: `idm-{primary,replica,client}`
-- Network: `idm-image-mode-net`, subnet `10.89.0.0/24`
-  - primary: `10.89.0.10`, replica: `10.89.0.11`, client: `10.89.0.12`
+- Network: `idm-image-mode-net`, subnet `10.99.0.0/24`
+  - primary: `10.99.0.10`, replica: `10.99.0.11`, client: `10.99.0.12`
 
 ## Lab VMs
 
@@ -59,7 +59,10 @@ Three Fedora 43 VMs (will upgrade to F44 for Phase 3):
 ```bash
 ./tests/test-build.sh                    # verify image contents
 ./tests/test-build.sh --type=client      # client image
-./tests/test-firstboot-primary.sh        # full primary server test
+./tests/test-firstboot-primary.sh        # primary server test (13 tests)
+./tests/test-firstboot-client.sh         # client enrollment (12 tests)
+./tests/test-firstboot-replica.sh        # replica join + replication (16 tests)
+./tests/test-policies.sh                 # HBAC + sudo rules (12 tests)
 ```
 
 ## Reference
