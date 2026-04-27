@@ -28,6 +28,12 @@ COPY config/idm-firstboot.sh /usr/local/sbin/idm-firstboot
 COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
 COPY config/config.env.example /etc/idm-image-mode/config.env.example
 
+# Redirect FreeIPA's /usr writes to /var — bootc makes /usr read-only (ostree)
+RUN mkdir -p /var/lib/ipa/html \
+    && cp -a /usr/share/ipa/html/. /var/lib/ipa/html/ 2>/dev/null || true \
+    && rm -rf /usr/share/ipa/html \
+    && ln -s /var/lib/ipa/html /usr/share/ipa/html
+
 RUN chmod 755 /usr/local/sbin/idm-firstboot \
     && mkdir -p /var/lib/idm-image-mode \
     && systemctl enable idm-firstboot.service

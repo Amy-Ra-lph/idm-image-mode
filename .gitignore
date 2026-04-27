@@ -4,6 +4,7 @@ config.env
 *.passwd
 
 # Build artifacts
+output/
 *.qcow2
 *.vmdk
 *.iso
