@@ -20,14 +20,14 @@ IMAGE_PREFIX="idm-image-mode"
 # ── Container Defaults ───────────────────────────────────────────────
 CONTAINER_PREFIX="idm"
 NETWORK_NAME="idm-image-mode-net"
-NETWORK_SUBNET="10.89.0.0/24"
-NETWORK_GATEWAY="10.89.0.1"
+NETWORK_SUBNET="10.99.0.0/24"
+NETWORK_GATEWAY="10.99.0.1"
 
 # Static IPs for multi-container topology
 declare -A NODE_IPS=(
-    [primary]="10.89.0.10"
-    [replica]="10.89.0.11"
-    [client]="10.89.0.12"
+    [primary]="10.99.0.10"
+    [replica]="10.99.0.11"
+    [client]="10.99.0.12"
 )
 
 # ── Logging ──────────────────────────────────────────────────────────

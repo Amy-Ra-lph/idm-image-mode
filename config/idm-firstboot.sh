@@ -48,6 +48,16 @@ else
     log_info "Using system hostname: ${IDM_HOSTNAME}"
 fi
 
+# ── Container Environment Fixups ─────────────────────────────────────
+# Containers share the host clock — skip NTP (chronyd needs SYS_TIME)
+CONTAINER_ARGS=(--no-ntp)
+
+# Replace systemd-resolved stub with a working resolver
+if grep -q '127.0.0.53' /etc/resolv.conf 2>/dev/null; then
+    log_info "Replacing systemd-resolved stub in /etc/resolv.conf"
+    echo "nameserver ${IDM_DNS_FORWARDER:-8.8.8.8}" > /etc/resolv.conf
+fi
+
 # ── Install Based on Role ────────────────────────────────────────────
 case "$IDM_ROLE" in
     primary)
@@ -60,6 +70,7 @@ case "$IDM_ROLE" in
             --ds-password="${IDM_DS_PASSWORD}"
             --admin-password="${IDM_ADMIN_PASSWORD}"
             --unattended
+            "${CONTAINER_ARGS[@]}"
         )
 
         if [[ "${IDM_SETUP_DNS:-yes}" == "yes" ]]; then
@@ -107,7 +118,8 @@ case "$IDM_ROLE" in
             --principal=admin \
             --password="${IDM_ADMIN_PASSWORD}" \
             --unattended \
-            --force-join
+            --force-join \
+            "${CONTAINER_ARGS[@]}"
 
         # Step 2: Promote to replica
         log_info "Step 2/2: Promoting to replica..."
@@ -153,7 +165,8 @@ case "$IDM_ROLE" in
             --principal=admin \
             --password="${IDM_ADMIN_PASSWORD}" \
             --unattended \
-            --force-join
+            --force-join \
+            "${CONTAINER_ARGS[@]}"
 
         log_ok "FreeIPA client installed"
         ;;

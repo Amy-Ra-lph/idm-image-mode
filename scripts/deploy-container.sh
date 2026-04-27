@@ -120,26 +120,27 @@ ensure_network
 NODE_IP="${NODE_IPS[$ROLE]}"
 
 # ── Port Mappings ────────────────────────────────────────────────────
-# DESIGN: Primary gets standard ports. Replica gets offset ports to avoid
-# conflicts when running on the same host. Client needs no server ports.
+# DESIGN: Ports remapped above 1024 for rootless Podman. Primary gets
+# 8xxx/9xxx, replica gets offset. Client needs no server ports.
+# Within the Podman network containers communicate on standard ports.
 declare -a PORTS=()
 case "$ROLE" in
     primary)
         PORTS=(
-            -p 443:443 -p 80:80
-            -p 389:389 -p 636:636
-            -p 88:88 -p 88:88/udp
-            -p 464:464 -p 464:464/udp
-            -p 53:53 -p 53:53/udp
+            -p 8443:443 -p 8080:80
+            -p 3389:389 -p 6636:636
+            -p 8088:88 -p 8088:88/udp
+            -p 8464:464 -p 8464:464/udp
+            -p 5354:53 -p 5354:53/udp
         )
         ;;
     replica)
         PORTS=(
-            -p 1443:443 -p 1080:80
-            -p 1389:389 -p 1636:636
-            -p 1088:88 -p 1088:88/udp
-            -p 1464:464 -p 1464:464/udp
-            -p 1053:53 -p 1053:53/udp
+            -p 9443:443 -p 9080:80
+            -p 4389:389 -p 7636:636
+            -p 9088:88 -p 9088:88/udp
+            -p 9464:464 -p 9464:464/udp
+            -p 6353:53 -p 6353:53/udp
         )
         ;;
     client)

@@ -78,8 +78,8 @@ assert "named is running (DNS)" \
 log_info "Testing idempotency (restart container)..."
 podman restart "$CNAME" 2>/dev/null
 
-# Wait a moment for systemd to settle
-sleep 10
+# Wait for systemd and IPA services to settle after restart
+sleep 20
 
 assert "after restart: stamp file still exists" \
     exec_in "test -f /var/lib/idm-image-mode/.firstboot-complete"
