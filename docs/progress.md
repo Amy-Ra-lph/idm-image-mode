@@ -51,26 +51,65 @@
 - `--no-ntp` invalid during ipa-replica-install (NTP already configured by client step)
 - ipa-replica-install needs explicit `--principal=admin --admin-password=...`
 
-## Phase 3: Mixed Topology Testing — NOT STARTED
+## Phase 3: Mixed Topology (VM + Container) — COMPLETE
 
-Requires lab VMs upgraded to Fedora 44 (currently F43). Snapshot after upgrade, before IPA install.
+**Date:** 2026-04-27
+**Result:** 3 deployment formats coexist in one FreeIPA topology with full bidirectional replication
+
+- **idm1** (192.168.140.101) — rpm-format primary (traditional ipa-server-install)
+- **idm2** (192.168.140.102) — bootc image-mode VM replica (qcow2 on OCP Virt)
+- **idm3** (192.168.140.103) — image-mode Podman container replica (--network=host)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Upgrade VMs to F44 | | idm1, idm2, idm3 — snapshot clean F44 baseline |
-| Install FreeIPA on rpm VMs | | At least one primary + one client |
-| ansible/inventory/hosts.yml | | Mixed groups: rpm + image-mode |
-| test-mixed-topology.sh | | rpm↔image-mode interop matrix |
-| ansible/playbooks/smoke-test.yml | | Automated validation |
+| Upgrade VMs to F44 | Done | All 3 VMs upgraded, snapshotted clean |
+| Install FreeIPA primary on idm1 (rpm) | Done | Traditional ipa-server-install, all services healthy |
+| idm3 — Podman container replica | Done | `--network=host`, bidirectional replication confirmed |
+| idm2 — bootc qcow2 VM replica | Done | Symlink fix for `/usr` read-only, static IP, all 9 services running |
+| Containerfile.server-vm | Done | Lab-only layer: claude user, SSH key, root password, DHCP, baked config |
+| config.env.idm2 | Done | Replica config pointing at idm1 |
+| scripts/build-vm.sh | Done | bootc-image-builder wrapper (`--rootfs ext4`) |
+| scripts/deploy-idm3-replica.sh | Done | Console deploy helper for `--network=host` |
+| test-mixed-topology.sh | Done | 19/19 pass against containers, `--target=vm` flag for VMs |
 
-## Phase 4: Management Tooling — NOT STARTED
+**Issues found & fixed:**
+- **bootc /usr is read-only (ostree)** — FreeIPA writes `ca.crt` to `/usr/share/ipa/html/`. Fix: symlink to `/var/lib/ipa/html` in Containerfile
+- bootc-image-builder needs `--rootfs ext4` (fedora-bootc has no default rootfs)
+- OCP Virt network has no DHCP — must use static IP in NetworkManager config
+- bootc images have no default users — must bake in SSH key + root password for lab access
+- `--network=host` means container SSHD takes port 22 — stop host SSHD first
+- Stale replication agreements persist after failed replica-install — `ipa server-del --force --ignore-topology-disconnect` to clean up
+- SSH to idm3 container requires hopping through idm1 with Kerberos GSSAPI
+
+## Phase 4: OCP Container Workload — NOT STARTED
+
+**Goal:** Run FreeIPA as a Pod on OpenShift, proving the same image works across VM, Podman, and OCP
+
+| Item | Status | Notes |
+|------|--------|-------|
+| OCP namespace + SCC | | Custom SecurityContextConstraints for privileged + systemd |
+| PVC for /var | | Persistent storage for LDAP, PKI, logs |
+| StatefulSet manifest | | Stable hostname, ordered scaling |
+| DNS strategy | | IPA DNS vs CoreDNS coexistence |
+| Service/Route | | Expose LDAP (389/636), Kerberos (88/464), HTTPS (443) |
+| Replica join from OCP Pod | | Pod enrolls against idm1, promotes to replica |
+| Network policy | | Lock down IPA ports to namespace |
+| test-ocp-topology.sh | | Cross-format tests including OCP Pod |
+
+**Key challenges:**
+- Privileged containers restricted by OCP SCC — need custom policy
+- systemd as PID 1 is non-standard for OCP (CRI-O supports it)
+- FreeIPA DNS vs CoreDNS coexistence needs careful design
+- StatefulSet (not Deployment) for stable hostnames + persistent storage
+
+## Phase 5: Management Tooling — NOT STARTED
 
 | Item | Status | Notes |
 |------|--------|-------|
 | manage.sh | | status, upgrade, rollback, logs, shell, destroy |
 | status.sh | | Health dashboard across all nodes |
 
-## Phase 5: Upgrade Workflow — NOT STARTED
+## Phase 6: Upgrade Workflow — NOT STARTED
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -79,7 +118,7 @@ Requires lab VMs upgraded to Fedora 44 (currently F43). Snapshot after upgrade, 
 | test-upgrade.sh | | Deploy v1, upgrade v2, verify data, rollback |
 | ansible/playbooks/upgrade.yml | | Rolling upgrade (serial:1) |
 
-## Phase 6: CI + Docs — NOT STARTED
+## Phase 7: CI + Docs — NOT STARTED
 
 | Item | Status | Notes |
 |------|--------|-------|

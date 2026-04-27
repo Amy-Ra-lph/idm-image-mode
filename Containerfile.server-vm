@@ -1,0 +1,46 @@
+# Containerfile.server-vm — LAB ONLY bootstrap layer for VM/container access
+#
+# In production, images stay generic — identity comes from IdM itself.
+# Once firstboot completes, IdM users authenticate via SSSD/Kerberos
+# with HBAC controlling access. No local accounts needed.
+#
+# This layer adds lab-only conveniences for pre-enrollment access:
+#   - claude user with SSH key and passwordless sudo
+#   - Root password for console access
+#   - DHCP networking via NetworkManager
+#   - Baked-in config.env for the target role
+#
+# Build:
+#   podman build -t localhost/idm-image-mode-server-idm2:latest \
+#     -f Containerfile.server-vm .
+
+FROM localhost/idm-image-mode-server:latest
+
+# Create claude user with sudo and SSH key
+RUN useradd -m -G wheel claude \
+    && mkdir -p /home/claude/.ssh \
+    && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBvoeILPgZQbsv/nmWwCpJmhPTWaCWMyidJ38mdQ+Qeh claude' > /home/claude/.ssh/authorized_keys \
+    && chmod 700 /home/claude/.ssh \
+    && chmod 600 /home/claude/.ssh/authorized_keys \
+    && chown -R claude:claude /home/claude/.ssh \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+# Set root password for console access
+RUN echo 'root:Secret123!' | chpasswd
+
+# Static IP — OCP Virt network has no DHCP
+RUN nmcli --offline con add \
+        type ethernet \
+        con-name enp1s0 \
+        ifname enp1s0 \
+        ipv4.method manual \
+        ipv4.addresses 192.168.140.102/24 \
+        ipv4.gateway 192.168.140.1 \
+        ipv4.dns 192.168.140.101 \
+        ipv6.method auto \
+        connection.autoconnect yes \
+        > /etc/NetworkManager/system-connections/enp1s0.nmconnection \
+    && chmod 600 /etc/NetworkManager/system-connections/enp1s0.nmconnection
+
+# Bake in the deployment config
+COPY config.env.idm2 /etc/idm-image-mode/config.env
