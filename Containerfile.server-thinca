@@ -1,26 +1,41 @@
-# Containerfile.server — bootc image for FreeIPA/IdM server (primary or replica)
+# Containerfile.server-thinca — bootc image for FreeIPA/IdM with ThinCA backend
 #
-# This image contains all packages needed to run an IdM domain controller.
-# The same image is used for both primary and replica roles — the IDM_ROLE
-# variable in config.env determines which installer runs at first boot.
+# Replaces Dogtag (Java/Tomcat PKI) with twoerner's IPAThinCA — a lightweight
+# Python-native CA built on python-cryptography. Same role-agnostic design:
+# IDM_ROLE in config.env controls primary vs replica vs client.
+#
+# Benefits over Dogtag:
+#   - No Java/Tomcat stack (~500MB smaller image)
+#   - Faster firstboot (no pkispawn, no 7-minute PKI setup)
+#   - Lower memory footprint (~200MB vs ~400MB+ with Dogtag)
+#   - Better fit for edge, OCP pods, and resource-constrained deployments
+#
+# Source: https://github.com/t-woerner/freeipa/tree/IPAthinCA
+# COPR:   twoerner/freeipa (Fedora 44, built daily)
+# Status: EXPERIMENTAL — development branch, not released upstream
 #
 # Build:
-#   podman build -t localhost/idm-image-mode-server:latest -f Containerfile.server .
+#   podman build -t localhost/idm-image-mode-server-thinca:latest \
+#     -f Containerfile.server-thinca .
 #
 # For bootc disk image conversion:
 #   sudo podman run --rm -it --privileged --pull=newer \
 #     -v ./output:/output \
 #     quay.io/centos-bootc/bootc-image-builder:latest \
-#     --type qcow2 \
-#     localhost/idm-image-mode-server:latest
+#     --type qcow2 --rootfs ext4 \
+#     localhost/idm-image-mode-server-thinca:latest
 
 FROM quay.io/fedora/fedora-bootc:44
 
-# Install FreeIPA server with DNS and AD trust support
-RUN dnf install -y \
+# Replace stock FreeIPA with ThinCA build from twoerner's COPR
+# dnf5 on F44 needs the copr plugin installed first
+RUN dnf install -y 'dnf5-command(copr)' \
+    && dnf copr enable -y twoerner/freeipa \
+    && dnf install -y \
         freeipa-server \
         freeipa-server-dns \
         freeipa-server-trust-ad \
+        python3-ipathinca \
     && dnf clean all
 
 # dbus-broker fails in containers (inotify limit); use classic dbus-daemon

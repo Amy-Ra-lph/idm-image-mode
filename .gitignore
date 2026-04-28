@@ -1,5 +1,6 @@
 # Secrets
 config.env
+config.env.*
 *.keytab
 *.passwd
 

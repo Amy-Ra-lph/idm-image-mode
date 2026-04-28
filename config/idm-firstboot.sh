@@ -42,7 +42,7 @@ log_info "Realm: ${IDM_REALM}"
 # ── Set Hostname ─────────────────────────────────────────────────────
 if [[ -n "${IDM_HOSTNAME:-}" ]]; then
     log_info "Setting hostname: ${IDM_HOSTNAME}"
-    hostnamectl set-hostname "${IDM_HOSTNAME}"
+    hostnamectl set-hostname "${IDM_HOSTNAME}" 2>/dev/null || hostname "${IDM_HOSTNAME}"
 else
     IDM_HOSTNAME=$(hostname -f)
     log_info "Using system hostname: ${IDM_HOSTNAME}"
@@ -102,6 +102,11 @@ case "$IDM_ROLE" in
             install_args+=(--setup-adtrust)
         fi
 
+        if [[ "${IDM_USE_THINCA:-no}" == "yes" ]]; then
+            install_args+=(--use-ipathinca)
+            log_info "Using IPAThinCA backend (no Dogtag/PKI)"
+        fi
+
         ipa-server-install "${install_args[@]}"
         log_ok "FreeIPA primary server installed"
         ;;
@@ -154,6 +159,16 @@ case "$IDM_ROLE" in
 
         if [[ "${IDM_REPLICA_SETUP_CA:-yes}" == "yes" ]]; then
             replica_args+=(--setup-ca)
+        fi
+
+        if [[ "${IDM_USE_THINCA:-no}" == "yes" ]]; then
+            replica_args+=(--use-ipathinca)
+            log_info "Using IPAThinCA backend (no Dogtag/PKI)"
+        fi
+
+        if [[ "${IDM_SKIP_CONNCHECK:-no}" == "yes" ]]; then
+            replica_args+=(--skip-conncheck)
+            log_info "Skipping connection check (primary cannot reach this node)"
         fi
 
         ipa-replica-install "${replica_args[@]}"
