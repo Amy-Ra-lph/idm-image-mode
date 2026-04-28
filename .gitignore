@@ -1,6 +1,7 @@
-# Secrets
+# Secrets — deployment configs (contain passwords)
 config.env
 config.env.*
+!config.env.*.example
 *.keytab
 *.passwd
 
