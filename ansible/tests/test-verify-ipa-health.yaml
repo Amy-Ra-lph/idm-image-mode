@@ -1,0 +1,10 @@
+---
+# Dry-run syntax validation of verify_ipa_health role
+# Run: ansible-playbook --syntax-check ansible/tests/test-verify-ipa-health.yaml
+- name: Test verify_ipa_health role
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Include verify_ipa_health
+      include_role:
+        name: verify_ipa_health

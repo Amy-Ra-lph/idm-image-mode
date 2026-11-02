@@ -1,0 +1,66 @@
+---
+# Image rebase: stock FreeIPA → WID image (or any image change)
+# Usage: ansible-playbook -i inventory/imagemode playbooks/lifecycle/bootc-switch.yaml
+#        -e bootc_target_image=<registry/image:tag>
+#        [-e wid_enabled=true]
+
+- name: Pre-switch baseline verification
+  hosts: all
+  become: true
+  tasks:
+    - name: Run full verification suite
+      include_role:
+        name: verify_full_suite
+
+    - name: Backup pre-switch state
+      include_role:
+        name: backup_ipa_state
+      vars:
+        backup_label: "pre-switch-{{ ansible_date_time.iso8601_basic_short }}"
+        include_lmdb: true
+
+- name: Rolling image switch
+  hosts: ipa_replicas:ipa_primary
+  become: true
+  serial: 1
+  order: reverse_sorted
+  tasks:
+    - name: Switch to new image
+      command: bootc switch {{ bootc_target_image }}
+
+    - name: Reboot into new image
+      reboot:
+        reboot_timeout: 300
+
+    - name: Wait for IPA services
+      command: ipactl status
+      register: ipactl_result
+      retries: 12
+      delay: 15
+      until: ipactl_result.rc == 0
+
+    - name: Check new freeipa-server version
+      shell: rpm -q freeipa-server
+      register: new_version
+      changed_when: false
+
+    - name: Run ipa-server-upgrade
+      command: ipa-server-upgrade
+
+    - name: Update version stamp
+      copy:
+        content: "{{ new_version.stdout }}"
+        dest: /var/lib/idm-image-mode/.image-version
+
+    - name: Post-switch verification gate
+      include_role:
+        name: verify_full_suite
+      vars:
+        wid_enabled: "{{ wid_enabled | default(false) }}"
+
+    - name: Assert verification passed
+      assert:
+        that: verification_passed | default(false)
+        fail_msg: >
+          Verification failed after switching {{ inventory_hostname }}.
+          Remaining nodes NOT switched. Run rollback-node.yaml to recover.

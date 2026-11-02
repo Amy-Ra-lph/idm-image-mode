@@ -23,5 +23,9 @@ __pycache__/
 .vscode/
 .idea/
 
+# Worktrees
+.worktrees/
+.superpowers/
+
 # OS
 .DS_Store

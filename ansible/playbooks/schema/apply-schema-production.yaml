@@ -1,0 +1,51 @@
+---
+# Production schema migration — single entry point
+# Orchestrates: Layer 1 (validate) → Layer 3 (canary) → verify all
+# Usage: ansible-playbook -i inventory/imagemode playbooks/schema/apply-schema-production.yaml
+#        -e schema_ldif=/path/to/custom-schema.ldif
+
+- name: "S0→S1: Offline schema validation (Layer 1)"
+  import_playbook: validate-schema.yaml
+
+- name: Assert validation passed
+  hosts: ipa_primary
+  tasks:
+    - name: Gate on validation result
+      assert:
+        that: schema_valid | default(false)
+        fail_msg: "Schema validation failed — aborting migration"
+
+- name: "S1→S4: Canary test and production apply (Layer 3)"
+  import_playbook: canary-schema.yaml
+
+- name: Final production verification
+  hosts: all
+  become: true
+  tasks:
+    - name: Get schema objectClass count
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=schema" -s base objectclasses 2>/dev/null | grep -c "objectClasses:"
+      register: final_schema_count
+      changed_when: false
+      no_log: true
+
+    - name: Verify consistent schema across cluster
+      assert:
+        that: final_schema_count.stdout == hostvars[groups['ipa_primary'][0]].final_schema_count.stdout
+        fail_msg: >
+          Schema mismatch: {{ inventory_hostname }} has {{ final_schema_count.stdout }}
+          objectClasses vs primary has {{ hostvars[groups['ipa_primary'][0]].final_schema_count.stdout }}
+
+- name: Final full verification
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Run full verification suite
+      include_role:
+        name: verify_full_suite
+
+    - name: Schema migration complete
+      debug:
+        msg: "Schema migration S0→S4 complete. All nodes verified consistent."

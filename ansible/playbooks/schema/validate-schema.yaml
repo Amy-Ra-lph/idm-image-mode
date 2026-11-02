@@ -1,0 +1,83 @@
+---
+# Layer 1: Offline schema validation
+# Usage: ansible-playbook -i inventory/imagemode playbooks/schema/validate-schema.yaml
+#        -e schema_ldif=/path/to/custom-schema.ldif
+
+- name: Validate LDIF schema offline
+  hosts: ipa_primary
+  become: true
+  vars:
+    schema_ldif: "{{ schema_ldif }}"
+  tasks:
+    - name: Verify LDIF file exists
+      stat:
+        path: "{{ schema_ldif }}"
+      register: ldif_stat
+
+    - name: Fail if LDIF missing
+      assert:
+        that: ldif_stat.stat.exists
+        fail_msg: "Schema LDIF not found: {{ schema_ldif }}"
+
+    - name: Validate schema with dsconf
+      command: dsconf slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }} schema validate {{ schema_ldif }}
+      register: dsconf_result
+      ignore_errors: true
+
+    - name: Extract OIDs from LDIF
+      shell: |
+        grep -oP "(?<=OID\s)[0-9.]+" {{ schema_ldif }} | sort -u
+      register: new_oids
+      changed_when: false
+
+    - name: Get existing schema OIDs from directory
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost -D "cn=Directory Manager" \
+          -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=schema" -s base objectclasses attributetypes 2>/dev/null | \
+          grep -oP "(?<=OID\s)[0-9.]+" | sort -u
+      register: existing_oids
+      changed_when: false
+      no_log: true
+
+    - name: Check for OID conflicts
+      shell: |
+        comm -12 <(echo "{{ new_oids.stdout }}") <(echo "{{ existing_oids.stdout }}")
+      register: oid_conflicts
+      changed_when: false
+
+    - name: Fail on OID conflicts
+      assert:
+        that: oid_conflicts.stdout | length == 0
+        fail_msg: "OID conflicts detected: {{ oid_conflicts.stdout_lines }}"
+
+    - name: Check attribute references
+      shell: |
+        python3 -c "
+        import re, sys
+        with open('{{ schema_ldif }}') as f:
+            content = f.read()
+        # Extract SUP references and MUST/MAY attributes
+        refs = set(re.findall(r'SUP\s+(\w+)', content))
+        refs.update(re.findall(r'(?:MUST|MAY)\s*\(?\s*([\w\s$]+)\)?', content))
+        # Flatten
+        attrs = set()
+        for r in refs:
+            for a in r.replace('$', ' ').split():
+                if a.strip():
+                    attrs.add(a.strip())
+        if attrs:
+            print('Referenced attributes/objectclasses: ' + ', '.join(sorted(attrs)))
+        else:
+            print('No external references found')
+        "
+      register: attr_refs
+      changed_when: false
+
+    - name: Report attribute references
+      debug:
+        msg: "{{ attr_refs.stdout }}"
+
+    - name: Set schema validation result
+      set_fact:
+        schema_valid: "{{ dsconf_result.rc == 0 and (oid_conflicts.stdout | length == 0) }}"

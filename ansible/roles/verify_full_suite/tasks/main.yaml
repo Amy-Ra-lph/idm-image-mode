@@ -1,0 +1,88 @@
+---
+- name: Verify IPA health on this node
+  include_role:
+    name: verify_ipa_health
+
+- name: Verify domain topology connectivity
+  command: ipa topologysuffix-verify domain
+  register: topo_domain
+  changed_when: false
+  failed_when: "'disconnected' in topo_domain.stdout or 'unreachable' in topo_domain.stdout"
+  when: inventory_hostname in groups.get('ipa_primary', [])
+
+- name: Verify CA topology connectivity
+  command: ipa topologysuffix-verify ca
+  register: topo_ca
+  changed_when: false
+  failed_when: "'disconnected' in topo_ca.stdout or 'unreachable' in topo_ca.stdout"
+  when: inventory_hostname in groups.get('ipa_primary', [])
+
+- name: Verify replication to all peers
+  include_role:
+    name: verify_replication
+  vars:
+    verify_all_peers: true
+  when: inventory_hostname in groups.get('ipa_primary', [])
+
+- name: Get admin ticket for cross-node tests
+  shell: echo "{{ verify_admin_password }}" | kinit admin
+  changed_when: false
+  no_log: true
+  when: inventory_hostname in groups.get('ipa_primary', [])
+
+- name: Acquire service ticket for each node
+  command: kvno HTTP/{{ hostvars[item].ansible_fqdn | default(item + '.' + verify_domain) }}@{{ verify_realm }}
+  loop: "{{ groups['all'] }}"
+  changed_when: false
+  when: inventory_hostname in groups.get('ipa_primary', [])
+
+- name: GSSAPI bind to local DS
+  shell: |
+    echo "{{ verify_admin_password }}" | kinit admin 2>/dev/null
+    ldapsearch -Y GSSAPI -H ldap://localhost \
+      -b "cn=users,cn=accounts,dc={{ verify_domain | regex_replace('\\.', ',dc=') }}" \
+      "(uid=admin)" dn 2>/dev/null | grep -q "uid=admin"
+  changed_when: false
+  no_log: true
+
+- name: Simple bind as Directory Manager
+  shell: |
+    ldapwhoami -x -H ldap://localhost \
+      -D "cn=Directory Manager" -w "{{ verify_dm_password }}"
+  changed_when: false
+  no_log: true
+
+- name: Password bind as admin
+  shell: |
+    ldapwhoami -x -H ldap://localhost \
+      -D "uid=admin,cn=users,cn=accounts,dc={{ verify_domain | regex_replace('\\.', ',dc=') }}" \
+      -w "{{ verify_admin_password }}"
+  changed_when: false
+  no_log: true
+
+- name: WID - ahdapa OIDC discovery
+  uri:
+    url: "http://localhost:8090/.well-known/openid-configuration"
+    return_content: true
+  register: oidc_discovery
+  failed_when: "'issuer' not in oidc_discovery.content"
+  when: wid_enabled | bool
+
+- name: WID - akamu ACME directory
+  uri:
+    url: "https://localhost:19443/acme/directory"
+    validate_certs: false
+    return_content: true
+  register: acme_directory
+  failed_when: "'newNonce' not in acme_directory.content"
+  when: wid_enabled | bool
+
+- name: WID - Kerberos still works alongside WID
+  shell: echo "{{ verify_admin_password }}" | kinit admin && ipa ping
+  changed_when: false
+  no_log: true
+  when: wid_enabled | bool
+
+- name: Set verification passed
+  set_fact:
+    verification_passed: true

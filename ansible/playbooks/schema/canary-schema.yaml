@@ -1,0 +1,206 @@
+---
+# Layer 3: Isolated canary schema application
+# Usage: ansible-playbook -i inventory/imagemode playbooks/schema/canary-schema.yaml
+#        -e schema_ldif=/path/to/custom-schema.ldif
+
+- name: Pre-flight verification and backup
+  hosts: all
+  become: true
+  tasks:
+    - name: Full verification suite
+      include_role:
+        name: verify_full_suite
+
+    - name: Backup all nodes
+      include_role:
+        name: backup_ipa_state
+      vars:
+        backup_label: "pre-schema-{{ ansible_date_time.iso8601_basic_short }}"
+        include_lmdb: true
+
+- name: Isolate canary node
+  hosts: all
+  become: true
+  tasks:
+    - name: Pause replication to canary
+      include_role:
+        name: isolate_replication
+      vars:
+        isolation_action: isolate
+        isolation_target: "{{ groups['ipa_canary'][0] }}"
+
+- name: Verify isolation
+  hosts: ipa_primary
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  tasks:
+    - name: Create isolation test user
+      freeipa.ansible_freeipa.ipauser:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        name: schema_isolation_test
+        first: Schema
+        last: Test
+        state: present
+
+    - name: Wait for replication propagation window
+      pause:
+        seconds: 10
+
+- name: Confirm user absent on canary
+  hosts: "{{ groups['ipa_canary'][0] }}"
+  become: true
+  tasks:
+    - name: Search for isolation test user
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=users,cn=accounts,dc={{ ipadomain | default('imagemode.test') | replace('.', ',dc=') }}" \
+          "(uid=schema_isolation_test)" dn 2>/dev/null | grep -c "^dn:"
+      register: user_count
+      changed_when: false
+      no_log: true
+
+    - name: Assert user not replicated (isolation confirmed)
+      assert:
+        that: user_count.stdout | int == 0
+        fail_msg: "Isolation failed — test user replicated to canary"
+
+- name: Apply schema on canary
+  hosts: "{{ groups['ipa_canary'][0] }}"
+  become: true
+  tasks:
+    - name: Schema apply with rollback protection
+      block:
+        - name: Copy schema LDIF to canary
+          copy:
+            src: "{{ schema_ldif }}"
+            dest: /tmp/custom-schema.ldif
+            mode: '0600'
+
+        - name: Apply schema via ldapmodify
+          shell: |
+            ldapmodify -x -H ldaps://localhost \
+              -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+              -f /tmp/custom-schema.ldif
+          register: ldapmodify_result
+          no_log: true
+
+        - name: Verify DS alive after schema apply
+          command: dsctl slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }} status
+          register: ds_status
+
+        - name: Verify schema loaded (check objectClasses count)
+          shell: |
+            ldapsearch -xLLL -H ldaps://localhost \
+              -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+              -b "cn=schema" -s base objectclasses 2>/dev/null | grep -c "objectClasses:"
+          register: schema_count
+          changed_when: false
+          no_log: true
+
+        - name: Verify DS survives restart
+          shell: |
+            dsctl slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }} restart
+            sleep 5
+            dsctl slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }} status
+          register: ds_restart
+
+        - name: Verify Kerberos works
+          shell: echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+          changed_when: false
+          no_log: true
+
+        - name: Verify IPA services
+          command: ipa ping
+          changed_when: false
+
+        - name: Test user CRUD on canary
+          shell: |
+            echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+            ipa user-add schema_canary_test --first=Canary --last=Test
+            ipa user-find schema_canary_test
+            ipa user-del schema_canary_test
+          register: crud_result
+          changed_when: false
+          no_log: true
+
+        - name: Clean up schema LDIF
+          file:
+            path: /tmp/custom-schema.ldif
+            state: absent
+
+        - name: Set canary result
+          set_fact:
+            canary_passed: true
+
+      rescue:
+        - name: Canary failed — restore from LMDB backup
+          shell: |
+            LATEST=$(ls -1td /var/lib/idm-image-mode/backups/pre-schema-*/db-snapshot 2>/dev/null | head -1)
+            INSTANCE=$(ls -1d /var/lib/dirsrv/slapd-*/ 2>/dev/null | head -1)
+            if [ -n "$LATEST" ] && [ -n "$INSTANCE" ]; then
+              dsctl "$(basename "$INSTANCE")" stop
+              cp -a "$LATEST"/* "${INSTANCE}db/"
+              dsctl "$(basename "$INSTANCE")" start
+            else
+              echo "No LMDB backup found or no DS instance — manual recovery needed"
+              exit 1
+            fi
+
+        - name: Set canary failed
+          set_fact:
+            canary_passed: false
+
+        - name: Fail the play
+          fail:
+            msg: "Schema canary failed — restored from LMDB backup. Check canary node manually."
+
+- name: Reconnect replication
+  hosts: all
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  tasks:
+    - name: Reconnect replication to canary
+      include_role:
+        name: isolate_replication
+      vars:
+        isolation_action: reconnect
+        isolation_target: "{{ groups['ipa_canary'][0] }}"
+
+    - name: Wait for schema replication
+      pause:
+        seconds: 20
+
+    - name: Clean up isolation test user
+      freeipa.ansible_freeipa.ipauser:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        name: schema_isolation_test
+        state: absent
+      ignore_errors: true
+
+- name: Verify schema on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Count objectClasses
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=schema" -s base objectclasses 2>/dev/null | grep -c "objectClasses:"
+      register: node_schema_count
+      changed_when: false
+      no_log: true
+
+    - name: Report schema count
+      debug:
+        msg: "{{ inventory_hostname }}: {{ node_schema_count.stdout }} objectClasses"
+
+- name: Post-schema verification
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Full verification suite
+      include_role:
+        name: verify_full_suite

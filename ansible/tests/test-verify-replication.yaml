@@ -1,0 +1,21 @@
+---
+# Dry-run syntax validation of verify_replication role
+- name: Test verify_replication role
+  hosts: ipa_primary
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  tasks:
+    - name: Include verify_replication
+      include_role:
+        name: verify_replication
+      vars:
+        verify_target: replica1
+
+- name: Test verify_full_suite role
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Include verify_full_suite
+      include_role:
+        name: verify_full_suite

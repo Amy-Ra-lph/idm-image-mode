@@ -1,0 +1,81 @@
+---
+# Rolling WID overlay deployment — stock IdM → WID image
+# Usage: ansible-playbook -i inventory/imagemode playbooks/wid/deploy-wid-overlay.yaml
+#        -e wid_image=<registry/wid-image:tag>
+
+- name: Pre-deploy verification
+  hosts: all
+  become: true
+  tasks:
+    - name: Baseline verification
+      include_role:
+        name: verify_full_suite
+
+    - name: Pre-deploy backup
+      include_role:
+        name: backup_ipa_state
+      vars:
+        backup_label: "pre-wid-{{ ansible_date_time.iso8601_basic_short }}"
+        include_lmdb: true
+
+- name: Rolling WID overlay
+  hosts: ipa_replicas:ipa_primary
+  become: true
+  serial: 1
+  order: reverse_sorted
+  tasks:
+    - name: Switch to WID image
+      command: bootc switch {{ wid_image }}
+
+    - name: Reboot
+      reboot:
+        reboot_timeout: 300
+
+    - name: Wait for IPA services
+      command: ipactl status
+      register: ipactl_result
+      retries: 12
+      delay: 15
+      until: ipactl_result.rc == 0
+
+    - name: Run ipa-server-upgrade
+      command: ipa-server-upgrade
+
+    - name: Update version stamp
+      shell: rpm -q freeipa-server > /var/lib/idm-image-mode/.image-version
+      changed_when: true
+
+    - name: Start ahdapa service
+      systemd:
+        name: ahdapa
+        state: started
+        enabled: true
+      ignore_errors: true
+
+    - name: Start akamu service
+      systemd:
+        name: akamu
+        state: started
+        enabled: true
+      ignore_errors: true
+
+    - name: Post-switch verification with WID
+      include_role:
+        name: verify_full_suite
+      vars:
+        wid_enabled: true
+
+    - name: Assert verification passed
+      assert:
+        that: verification_passed | default(false)
+        fail_msg: >
+          WID overlay failed on {{ inventory_hostname }}.
+          Remaining nodes NOT switched. Run rollback-node.yaml to recover.
+
+- name: Validate WID on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Verify WID services
+      include_role:
+        name: verify_wid

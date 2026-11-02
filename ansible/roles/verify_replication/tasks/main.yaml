@@ -1,0 +1,62 @@
+---
+- name: Get admin ticket for replication test
+  shell: echo "{{ verify_admin_password }}" | kinit admin
+  changed_when: false
+  no_log: true
+
+- name: Generate unique test user name
+  set_fact:
+    repl_test_user: "repl-verify-{{ ansible_date_time.epoch }}"
+
+- name: Create test user on primary
+  freeipa.ansible_freeipa.ipauser:
+    ipaadmin_password: "{{ verify_admin_password }}"
+    name: "{{ repl_test_user }}"
+    first: Replication
+    last: Test
+    state: present
+
+- name: Wait for replication propagation
+  pause:
+    seconds: "{{ repl_propagation_wait }}"
+
+- name: Determine target replicas
+  set_fact:
+    repl_check_hosts: "{{ groups['ipa_replicas'] | default([]) }}"
+  when: verify_all_peers | bool or not verify_target
+
+- name: Set single target replica
+  set_fact:
+    repl_check_hosts: "{{ [verify_target] }}"
+  when: not (verify_all_peers | bool) and verify_target
+
+- name: Verify test user replicated to targets
+  shell: |
+    ldapsearch -xLLL -H ldaps://{{ hostvars[item].ansible_fqdn | default(hostvars[item].ansible_host) }} \
+      -D "cn=Directory Manager" -w "{{ verify_dm_password }}" \
+      -b "cn=users,cn=accounts,dc={{ (ipadomain | default('imagemode.test')) | regex_replace('\\.', ',dc=') }}" \
+      "(uid={{ repl_test_user }})" dn | grep -q "dn:"
+  loop: "{{ repl_check_hosts }}"
+  changed_when: false
+  no_log: true
+
+- name: Clean up test user
+  freeipa.ansible_freeipa.ipauser:
+    ipaadmin_password: "{{ verify_admin_password }}"
+    name: "{{ repl_test_user }}"
+    state: absent
+
+- name: Check replication agreement status
+  shell: |
+    ldapsearch -xLLL -H ldaps://localhost -D "cn=Directory Manager" \
+      -w "{{ verify_dm_password }}" -b "cn=config" \
+      "(objectClass=nsds5replicationagreement)" \
+      nsds5replicahost nsds5replicalastupdatestatus 2>/dev/null \
+      | grep -E "nsds5replica(host|lastupdatestatus)"
+  register: repl_status
+  changed_when: false
+  no_log: true
+
+- name: Set replication health result
+  set_fact:
+    replication_healthy: true

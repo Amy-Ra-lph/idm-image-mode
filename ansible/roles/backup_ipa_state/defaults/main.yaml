@@ -1,0 +1,5 @@
+---
+backup_label: "{{ ansible_date_time.iso8601_basic_short | default('manual') }}"
+backup_base_dir: /var/lib/idm-image-mode/backups
+include_lmdb: false
+backup_dm_password: "{{ ipadm_password | default('Secret123') }}"

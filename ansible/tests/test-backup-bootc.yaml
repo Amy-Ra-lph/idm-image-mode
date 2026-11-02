@@ -1,0 +1,16 @@
+---
+- name: Test backup_ipa_state + bootc_lifecycle syntax
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Test backup role
+      include_role:
+        name: backup_ipa_state
+      vars:
+        backup_label: test-backup
+
+    - name: Test bootc lifecycle role (upgrade mode)
+      include_role:
+        name: bootc_lifecycle
+      vars:
+        bootc_action: upgrade

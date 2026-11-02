@@ -1,0 +1,49 @@
+---
+# WID lesson #42: full IPA uninstall + state wipe
+# WID lesson #43: do NOT rm -rf /etc/dirsrv/ — only slapd-* subdirs
+
+- name: Uninstall IPA server
+  command: ipa-server-install --uninstall -U
+  ignore_errors: true
+
+- name: Uninstall IPA client
+  command: ipa-client-install --uninstall -U
+  ignore_errors: true
+
+- name: Remove IPA state directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/ipa
+    - /etc/pki/pki-tomcat
+    - /var/log/pki
+    - /var/lib/ipa/sysrestore
+    - /var/lib/ipa/sysupgrade
+    - /var/lib/pki
+    - /run/ipa
+
+- name: Remove DS instance directories (preserve /etc/dirsrv/)
+  shell: |
+    rm -rf /var/lib/dirsrv/slapd-* \
+           /var/log/dirsrv/slapd-* \
+           /etc/dirsrv/slapd-*
+  changed_when: true
+
+- name: Remove httpd IPA config
+  shell: |
+    rm -f /etc/httpd/conf.d/ipa*.conf \
+          /etc/httpd/conf.d/nss.conf
+  changed_when: true
+
+- name: Clear LMDB locks from shared memory
+  shell: rm -rf /dev/shm/slapd-*
+  changed_when: true
+
+- name: Restore SELinux contexts
+  command: restorecon -Rv {{ item }}
+  loop:
+    - /var/lib/ipa
+    - /var/lib/dirsrv
+    - /var/kerberos
+  ignore_errors: true

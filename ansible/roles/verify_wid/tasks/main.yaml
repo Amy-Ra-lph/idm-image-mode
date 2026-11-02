@@ -1,0 +1,55 @@
+---
+- name: OIDC discovery endpoint
+  uri:
+    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + (ipadomain | default('imagemode.test'))) }}:{{ ahdapa_port }}/.well-known/openid-configuration"
+    validate_certs: false
+    return_content: true
+  register: oidc_discovery
+
+- name: Verify OIDC discovery has issuer
+  assert:
+    that: "'issuer' in oidc_discovery.json"
+    fail_msg: "OIDC discovery missing 'issuer' field"
+
+- name: OAuth2 client credentials grant
+  uri:
+    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + (ipadomain | default('imagemode.test'))) }}:{{ ahdapa_port }}/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: client_credentials
+      client_id: "{{ wid_test_client_id }}"
+      client_secret: "{{ wid_test_client_secret }}"
+    validate_certs: false
+    status_code: [200, 401]
+    return_content: true
+  register: oauth2_token
+
+- name: Report OAuth2 token result
+  debug:
+    msg: "OAuth2 token endpoint responded: {{ oauth2_token.status }}"
+
+- name: ACME directory
+  uri:
+    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + (ipadomain | default('imagemode.test'))) }}:{{ akamu_port }}/acme/directory"
+    validate_certs: false
+    return_content: true
+  register: acme_directory
+
+- name: Verify ACME directory has newNonce
+  assert:
+    that: "'newNonce' in acme_directory.json"
+    fail_msg: "ACME directory missing 'newNonce' field"
+
+- name: Verify Kerberos still works alongside WID
+  shell: echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+  changed_when: false
+  no_log: true
+
+- name: IPA ping coexistence check
+  command: ipa ping
+  changed_when: false
+
+- name: Set WID verification result
+  set_fact:
+    wid_verified: true

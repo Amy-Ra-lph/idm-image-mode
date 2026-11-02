@@ -1,0 +1,6 @@
+---
+verify_admin_password: "{{ ipaadmin_password | default('Secret123') }}"
+verify_ports:
+  - 389
+  - 88
+  - 443

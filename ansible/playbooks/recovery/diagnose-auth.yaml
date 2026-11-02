@@ -1,0 +1,100 @@
+---
+# R3: Authentication diagnostics
+# Usage: ansible-playbook -i inventory/imagemode playbooks/recovery/diagnose-auth.yaml
+
+- name: Diagnose authentication issues
+  hosts: all
+  become: true
+  tasks:
+    - name: Check KDC service
+      shell: systemctl is-active krb5kdc.service 2>&1 || true
+      register: kdc_status
+      changed_when: false
+
+    - name: Check Directory Server
+      shell: |
+        INSTANCE=$(ls /etc/dirsrv/ 2>/dev/null | grep slapd- | head -1)
+        if [ -n "$INSTANCE" ]; then
+          systemctl is-active dirsrv@${INSTANCE#slapd-}.service 2>&1 || true
+        else
+          echo "no instance found"
+        fi
+      register: ds_status
+      changed_when: false
+
+    - name: Check httpd service
+      shell: systemctl is-active httpd.service 2>&1 || true
+      register: httpd_status
+      changed_when: false
+
+    - name: Check IPA services list
+      shell: |
+        if [ -f /run/ipa/services.list ]; then
+          cat /run/ipa/services.list
+        else
+          echo "services.list missing"
+        fi
+      register: services_list
+      changed_when: false
+
+    - name: Check LDAP port 389
+      shell: ss -tlnp | grep ':389 ' || echo "port 389 not listening"
+      register: ldap_port
+      changed_when: false
+
+    - name: Check LDAPS port 636
+      shell: ss -tlnp | grep ':636 ' || echo "port 636 not listening"
+      register: ldaps_port
+      changed_when: false
+
+    - name: Check Kerberos port 88
+      shell: ss -tlnp | grep ':88 ' || echo "port 88 not listening"
+      register: krb_port
+      changed_when: false
+
+    - name: Check TLS certificate validity
+      shell: |
+        echo | openssl s_client -connect localhost:636 2>/dev/null | \
+          openssl x509 -noout -dates 2>/dev/null || echo "TLS check failed"
+      register: tls_check
+      changed_when: false
+
+    - name: Check custodia loginuid
+      shell: |
+        journalctl -u ipa-custodia.service --since "1 hour ago" --no-pager 2>/dev/null | \
+          grep -i "loginuid" | tail -5 || echo "no loginuid issues found"
+      register: custodia_check
+      changed_when: false
+
+    - name: Test kinit
+      shell: echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin 2>&1
+      register: kinit_test
+      changed_when: false
+      ignore_errors: true
+      no_log: true
+
+    - name: Test LDAP bind
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "" -s base namingContexts 2>&1 | head -3
+      register: ldap_test
+      changed_when: false
+      ignore_errors: true
+      no_log: true
+
+    - name: Diagnostic report
+      debug:
+        msg:
+          - "=== {{ inventory_hostname }} ==="
+          - "KDC: {{ kdc_status.stdout }}"
+          - "DS: {{ ds_status.stdout }}"
+          - "httpd: {{ httpd_status.stdout }}"
+          - "LDAP 389: {{ 'OK' if '389' in ldap_port.stdout else 'DOWN' }}"
+          - "LDAPS 636: {{ 'OK' if '636' in ldaps_port.stdout else 'DOWN' }}"
+          - "KRB 88: {{ 'OK' if '88' in krb_port.stdout else 'DOWN' }}"
+          - "TLS: {{ tls_check.stdout_lines | first | default('unknown') }}"
+          - "kinit: {{ 'OK' if kinit_test.rc == 0 else 'FAILED' }}"
+          - "LDAP bind: {{ 'OK' if ldap_test.rc == 0 else 'FAILED' }}"
+          - "services.list: {{ services_list.stdout_lines | length }} entries"
+          - "custodia: {{ custodia_check.stdout_lines | first | default('clean') }}"

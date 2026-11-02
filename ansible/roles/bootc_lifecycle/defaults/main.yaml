@@ -1,0 +1,7 @@
+---
+bootc_action: upgrade
+bootc_target_image: ""
+bootc_reboot_timeout: 300
+bootc_ipactl_retries: 12
+bootc_ipactl_delay: 15
+bootc_admin_password: "{{ ipaadmin_password | default('Secret123') }}"

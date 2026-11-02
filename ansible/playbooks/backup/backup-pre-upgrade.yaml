@@ -1,0 +1,19 @@
+---
+# Pre-upgrade backup on all nodes
+# Usage: ansible-playbook -i inventory/imagemode playbooks/backup/backup-pre-upgrade.yaml
+#        [-e backup_label=custom-label]
+
+- name: Pre-upgrade backup
+  hosts: all
+  become: true
+  tasks:
+    - name: Backup IPA state on all nodes
+      include_role:
+        name: backup_ipa_state
+      vars:
+        backup_label: "{{ backup_label | default('pre-upgrade-' + ansible_date_time.iso8601_basic_short) }}"
+        include_lmdb: true
+
+    - name: Report backup location
+      debug:
+        msg: "Backup saved to /var/lib/idm-image-mode/backups/{{ backup_label | default('pre-upgrade-' + ansible_date_time.iso8601_basic_short) }}/"
