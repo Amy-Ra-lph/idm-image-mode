@@ -1,0 +1,38 @@
+---
+# Push config.env to all nodes based on inventory role
+# Usage: ansible-playbook -i inventory/imagemode playbooks/cluster/inject-config.yaml
+- name: Inject IdM config to all nodes
+  hosts: all
+  become: true
+  vars:
+    idm_domain: "{{ ipadomain | default('imagemode.test') }}"
+    idm_realm: "{{ iparealm | default('IMAGEMODE.TEST') }}"
+    idm_admin_password: "{{ ipaadmin_password | default('Secret123') }}"
+    idm_dm_password: "{{ ipadm_password | default('Secret123') }}"
+    idm_dns_forwarder: "{{ dns_forwarder | default('10.11.5.19') }}"
+    idm_primary_host: "{{ hostvars[groups['ipa_primary'][0]].ansible_fqdn | default('primary.' + idm_domain) }}"
+  tasks:
+    - name: Create config directory
+      file:
+        path: /etc/idm-image-mode
+        state: directory
+        mode: "0700"
+
+    - name: Determine node role
+      set_fact:
+        idm_role: "{{ 'primary' if inventory_hostname in groups.get('ipa_primary', []) else 'replica' }}"
+
+    - name: Write config.env
+      copy:
+        dest: /etc/idm-image-mode/config.env
+        mode: "0600"
+        content: |
+          IDM_ROLE={{ idm_role }}
+          IDM_DOMAIN={{ idm_domain }}
+          IDM_REALM={{ idm_realm }}
+          IDM_ADMIN_PASSWORD={{ idm_admin_password }}
+          IDM_DM_PASSWORD={{ idm_dm_password }}
+          IDM_PRIMARY_HOST={{ idm_primary_host }}
+          IDM_DNS_FORWARDER={{ idm_dns_forwarder }}
+          IDM_HOSTNAME={{ ansible_fqdn | default(inventory_hostname + '.' + idm_domain) }}
+      no_log: true

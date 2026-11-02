@@ -1,0 +1,130 @@
+---
+# Deploy complete 4-node FreeIPA Image Mode cluster
+# Usage: ansible-playbook -i inventory/imagemode playbooks/cluster/deploy-cluster.yaml
+#
+# Replicas promoted sequentially (serial: 1) per spec constraint.
+# WID lessons #17 (dir tree) and #46 (swap) applied in pre_tasks.
+
+- name: Push config to all nodes
+  import_playbook: inject-config.yaml
+
+- name: Deploy primary server
+  hosts: ipa_primary
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  roles:
+    - role: ipaserver
+      vars:
+        ipaserver_domain: "{{ ipadomain | default('imagemode.test') }}"
+        ipaserver_realm: "{{ iparealm | default('IMAGEMODE.TEST') }}"
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        ipadm_password: "{{ ipadm_password | default('Secret123') }}"
+        ipaserver_setup_dns: true
+        ipaserver_auto_forwarders: false
+        ipaserver_forwarders:
+          - "{{ dns_forwarder | default('10.11.5.19') }}"
+        ipaserver_no_dnssec_validation: true
+        ipaserver_no_ntp: true
+  post_tasks:
+    - name: Gather package facts
+      package_facts:
+        manager: auto
+
+    - name: Record image version stamp
+      copy:
+        content: "{{ ansible_facts.packages['freeipa-server'][0].version }}-{{ ansible_facts.packages['freeipa-server'][0].release }}"
+        dest: /var/lib/idm-image-mode/.image-version
+
+    - name: Verify primary health
+      include_role:
+        name: verify_ipa_health
+
+- name: Deploy replicas (sequential)
+  hosts: ipa_replicas
+  become: true
+  serial: 1
+  collections:
+    - freeipa.ansible_freeipa
+  pre_tasks:
+    # WID lesson #17: pre-create /var/lib/ipa directory tree
+    - name: Create required IPA directories
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode | default('0755') }}"
+      loop:
+        - { path: /var/lib/ipa/sysrestore }
+        - { path: /var/lib/ipa/sysupgrade }
+        - { path: /var/lib/ipa/gssproxy }
+        - { path: /var/lib/ipa/passwds, mode: '0700' }
+        - { path: /var/lib/ipa/certs }
+        - { path: /var/lib/ipa/private, mode: '0700' }
+        - { path: /var/lib/ipa/backup }
+        - { path: /var/lib/ipa/pki-ca/publish }
+        - { path: /var/lib/ipa/dnssec/tokens }
+        - { path: /var/kerberos/krb5kdc }
+        - { path: /var/kerberos/krb5/user }
+        - { path: /etc/ipa/custodia }
+        - { path: /etc/ipa/dnssec }
+        - { path: /etc/ipa/html }
+        - { path: /etc/ipa/nssdb }
+        - { path: /etc/ipa/kdcproxy }
+
+    # WID lesson #46: add swap for pkispawn OOM
+    - name: Create swap file for CA setup
+      command: dd if=/dev/zero of=/var/swapfile bs=1M count=1024
+      args:
+        creates: /var/swapfile
+
+    - name: Set swap file permissions
+      file:
+        path: /var/swapfile
+        mode: "0600"
+      when: ansible_swaptotal_mb < 512
+
+    - name: Configure swap
+      shell: mkswap /var/swapfile && swapon /var/swapfile
+      ignore_errors: true
+      when: ansible_swaptotal_mb < 512
+
+  roles:
+    - role: ipareplica
+      vars:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        ipadm_password: "{{ ipadm_password | default('Secret123') }}"
+        ipareplica_setup_ca: true
+        ipareplica_setup_dns: true
+        ipareplica_forwarders:
+          - "{{ dns_forwarder | default('10.11.5.19') }}"
+        ipareplica_no_dnssec_validation: true
+        ipareplica_no_ntp: true
+        ipareplica_skip_conncheck: true
+
+  post_tasks:
+    - name: Gather package facts
+      package_facts:
+        manager: auto
+
+    - name: Record image version stamp
+      copy:
+        content: "{{ ansible_facts.packages['freeipa-server'][0].version }}-{{ ansible_facts.packages['freeipa-server'][0].release }}"
+        dest: /var/lib/idm-image-mode/.image-version
+
+    - name: Verify replica health
+      include_role:
+        name: verify_ipa_health
+
+    - name: Verify replication to this replica
+      include_role:
+        name: verify_replication
+      vars:
+        verify_target: "{{ inventory_hostname }}"
+
+- name: Final cluster verification
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Full verification suite
+      include_role:
+        name: verify_full_suite
