@@ -1,0 +1,59 @@
+---
+- name: Validate bootc action
+  assert:
+    that: bootc_action in ['upgrade', 'switch', 'rollback']
+    fail_msg: "bootc_action must be 'upgrade', 'switch', or 'rollback', got '{{ bootc_action }}'"
+
+- name: Validate target image for switch
+  assert:
+    that: bootc_target_image | length > 0
+    fail_msg: "bootc_target_image required for switch action"
+  when: bootc_action == 'switch'
+
+- name: Execute bootc upgrade
+  command: bootc upgrade --apply
+  register: bootc_result
+  when: bootc_action == 'upgrade'
+
+- name: Execute bootc switch
+  command: bootc switch {{ bootc_target_image }}
+  register: bootc_result
+  when: bootc_action == 'switch'
+
+- name: Execute bootc rollback
+  command: bootc rollback
+  register: bootc_result
+  when: bootc_action == 'rollback'
+
+- name: Reboot into new image
+  reboot:
+    reboot_timeout: "{{ bootc_reboot_timeout }}"
+
+- name: Wait for IPA services
+  command: ipactl status
+  register: ipactl_result
+  retries: "{{ bootc_ipactl_retries }}"
+  delay: "{{ bootc_ipactl_delay }}"
+  until: ipactl_result.rc == 0
+
+- name: Check current freeipa-server version
+  shell: rpm -q freeipa-server
+  register: current_version
+  changed_when: false
+
+- name: Read previous version stamp
+  slurp:
+    src: /var/lib/idm-image-mode/.image-version
+  register: prev_version_file
+  ignore_errors: true
+
+- name: Run ipa-server-upgrade if version changed
+  command: ipa-server-upgrade
+  when: >
+    prev_version_file is failed or
+    (prev_version_file.content | b64decode | trim) != current_version.stdout
+
+- name: Update version stamp
+  copy:
+    content: "{{ current_version.stdout }}"
+    dest: /var/lib/idm-image-mode/.image-version
