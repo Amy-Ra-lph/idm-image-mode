@@ -1,0 +1,7 @@
+---
+verify_admin_password: "{{ ipaadmin_password | default('Secret123') }}"
+verify_dm_password: "{{ ipadm_password | default('Secret123') }}"
+wid_enabled: false
+verification_passed: false
+verify_domain: "{{ ipadomain | default('imagemode.test') }}"
+verify_realm: "{{ iparealm | default('IMAGEMODE.TEST') }}"

@@ -1,0 +1,8 @@
+---
+verify_admin_password: "{{ ipaadmin_password | default('Secret123') }}"
+verify_dm_password: "{{ ipadm_password | default('Secret123') }}"
+repl_propagation_wait: 10
+repl_lag_warn_seconds: 5
+repl_lag_fail_seconds: 30
+verify_target: ""
+verify_all_peers: false
