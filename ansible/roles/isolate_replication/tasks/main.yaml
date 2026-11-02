@@ -1,0 +1,93 @@
+---
+- name: Validate isolation action
+  assert:
+    that: isolation_action in ['isolate', 'reconnect']
+    fail_msg: "isolation_action must be 'isolate' or 'reconnect'"
+
+- name: Validate isolation target
+  assert:
+    that: isolation_target | length > 0
+    fail_msg: "isolation_target must be set"
+  when: isolation_action == 'isolate'
+
+# --- ISOLATE ---
+
+- name: Find replication agreements to target on peers
+  shell: |
+    ldapsearch -Y EXTERNAL -H ldapi:// -b "cn=config" \
+      "(&(objectClass=nsds5replicationagreement)(nsds5replicahost={{ hostvars[isolation_target].ansible_fqdn | default(isolation_target + '.' + isolation_domain) }}))" \
+      dn 2>/dev/null | grep "^dn:" | sed 's/^dn: //'
+  register: peer_agreements
+  changed_when: false
+  when:
+    - isolation_action == 'isolate'
+    - inventory_hostname != isolation_target
+
+- name: Pause replication TO target on peers
+  shell: |
+    ldapmodify -Y EXTERNAL -H ldapi:// <<EOF
+    dn: {{ item }}
+    changetype: modify
+    replace: nsds5ReplicaEnabled
+    nsds5ReplicaEnabled: off
+    EOF
+  loop: "{{ peer_agreements.stdout_lines | default([]) }}"
+  when:
+    - isolation_action == 'isolate'
+    - inventory_hostname != isolation_target
+    - peer_agreements.stdout_lines | default([]) | length > 0
+
+- name: Find all outbound agreements on target
+  shell: |
+    ldapsearch -Y EXTERNAL -H ldapi:// -b "cn=config" \
+      "(objectClass=nsds5replicationagreement)" dn 2>/dev/null \
+      | grep "^dn:" | sed 's/^dn: //'
+  register: target_agreements
+  changed_when: false
+  when:
+    - isolation_action == 'isolate'
+    - inventory_hostname == isolation_target
+
+- name: Pause all outbound replication on target
+  shell: |
+    ldapmodify -Y EXTERNAL -H ldapi:// <<EOF
+    dn: {{ item }}
+    changetype: modify
+    replace: nsds5ReplicaEnabled
+    nsds5ReplicaEnabled: off
+    EOF
+  loop: "{{ target_agreements.stdout_lines | default([]) }}"
+  when:
+    - isolation_action == 'isolate'
+    - inventory_hostname == isolation_target
+    - target_agreements.stdout_lines | default([]) | length > 0
+
+# --- RECONNECT ---
+
+- name: Find all replication agreements
+  shell: |
+    ldapsearch -Y EXTERNAL -H ldapi:// -b "cn=config" \
+      "(objectClass=nsds5replicationagreement)" dn 2>/dev/null \
+      | grep "^dn:" | sed 's/^dn: //'
+  register: all_agreements
+  changed_when: false
+  when: isolation_action == 'reconnect'
+
+- name: Re-enable all replication agreements
+  shell: |
+    ldapmodify -Y EXTERNAL -H ldapi:// <<EOF
+    dn: {{ item }}
+    changetype: modify
+    replace: nsds5ReplicaEnabled
+    nsds5ReplicaEnabled: on
+    EOF
+  loop: "{{ all_agreements.stdout_lines | default([]) }}"
+  when:
+    - isolation_action == 'reconnect'
+    - all_agreements.stdout_lines | default([]) | length > 0
+  changed_when: true
+
+- name: Wait for replication to resume
+  pause:
+    seconds: "{{ isolation_verification_wait }}"
+  when: isolation_action == 'reconnect'

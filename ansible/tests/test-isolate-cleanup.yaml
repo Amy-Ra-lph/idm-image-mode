@@ -1,0 +1,19 @@
+---
+- name: Test isolate_replication syntax
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Test isolate
+      include_role:
+        name: isolate_replication
+      vars:
+        isolation_action: isolate
+        isolation_target: replica3
+
+- name: Test nuclear_cleanup syntax
+  hosts: ipa_canary
+  become: true
+  tasks:
+    - name: Test cleanup
+      include_role:
+        name: nuclear_cleanup

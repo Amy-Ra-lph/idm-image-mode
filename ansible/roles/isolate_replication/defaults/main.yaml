@@ -1,0 +1,7 @@
+---
+isolation_action: isolate
+isolation_target: ""
+isolation_verification_wait: 15
+isolation_dm_password: "{{ ipadm_password | default('Secret123') }}"
+isolation_admin_password: "{{ ipaadmin_password | default('Secret123') }}"
+isolation_domain: "{{ ipadomain | default('imagemode.test') }}"
