@@ -22,7 +22,7 @@
 
 - name: Export replication agreements
   shell: |
-    ldapsearch -x -H ldap://localhost -D "cn=Directory Manager" \
+    ldapsearch -xLLL -H ldaps://localhost -D "cn=Directory Manager" \
       -w "{{ backup_dm_password }}" -b "cn=config" \
       "(objectClass=nsds5replicationagreement)" \
       nsds5replicahost nsds5replicaport \

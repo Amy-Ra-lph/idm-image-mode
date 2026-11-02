@@ -19,7 +19,7 @@
         include_lmdb: true
 
 - name: Isolate canary node
-  hosts: ipa_primary
+  hosts: all
   become: true
   tasks:
     - name: Pause replication to canary
@@ -137,14 +137,16 @@
       rescue:
         - name: Canary failed — restore from LMDB backup
           shell: |
-            LATEST=$(ls -1t /var/lib/idm-image-mode/backups/pre-schema-*/lmdb_snapshot.tar.gz 2>/dev/null | head -1)
-            if [ -n "$LATEST" ]; then
-              dsctl slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }} stop
-              cd /var/lib/dirsrv/slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }}/db
-              tar xzf "$LATEST"
-              dsctl slapd-{{ iparealm | default('IMAGEMODE-TEST') | replace('.', '-') }} start
+            LATEST=$(ls -1td /var/lib/idm-image-mode/backups/pre-schema-*/db-snapshot 2>/dev/null | head -1)
+            INSTANCE=$(ls -1d /var/lib/dirsrv/slapd-*/ 2>/dev/null | head -1)
+            if [ -n "$LATEST" ] && [ -n "$INSTANCE" ]; then
+              dsctl "$(basename "$INSTANCE")" stop
+              cp -a "$LATEST"/* "${INSTANCE}db/"
+              dsctl "$(basename "$INSTANCE")" start
+            else
+              echo "No LMDB backup found or no DS instance — manual recovery needed"
+              exit 1
             fi
-          ignore_errors: true
 
         - name: Set canary failed
           set_fact:
@@ -155,7 +157,7 @@
             msg: "Schema canary failed — restored from LMDB backup. Check canary node manually."
 
 - name: Reconnect replication
-  hosts: ipa_primary
+  hosts: all
   become: true
   collections:
     - freeipa.ansible_freeipa

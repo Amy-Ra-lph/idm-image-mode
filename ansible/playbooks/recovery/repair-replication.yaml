@@ -13,13 +13,13 @@
       no_log: true
 
     - name: Verify domain topology
-      command: ipa topologysuffix-verify --suffix=domain
+      command: ipa topologysuffix-verify domain
       register: domain_verify
       changed_when: false
       ignore_errors: true
 
     - name: Verify CA topology
-      command: ipa topologysuffix-verify --suffix=ca
+      command: ipa topologysuffix-verify ca
       register: ca_verify
       changed_when: false
       ignore_errors: true

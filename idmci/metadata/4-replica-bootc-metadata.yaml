@@ -9,7 +9,7 @@ topology:
 hosts:
   - name: primary
     role: ipa_primary
-    group: ipaserver
+    group: ipa_primary
     os: rhel-10.4-bootc
     image: Containerfile.server-rhel10
     requirements:
@@ -19,7 +19,7 @@ hosts:
 
   - name: replica1
     role: ipa_replica
-    group: ipareplicas
+    group: ipa_replicas
     os: rhel-10.4-bootc
     image: Containerfile.server-rhel10
     requirements:
@@ -29,7 +29,7 @@ hosts:
 
   - name: replica2
     role: ipa_replica
-    group: ipareplicas
+    group: ipa_replicas
     os: rhel-10.4-bootc
     image: Containerfile.server-rhel10
     requirements:
@@ -39,7 +39,7 @@ hosts:
 
   - name: replica3
     role: ipa_replica
-    group: ipareplicas
+    group: ipa_replicas
     os: rhel-10.4-bootc
     image: Containerfile.server-rhel10
     requirements:

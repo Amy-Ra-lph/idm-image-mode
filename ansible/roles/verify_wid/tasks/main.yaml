@@ -1,7 +1,7 @@
 ---
 - name: OIDC discovery endpoint
   uri:
-    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + ipadomain | default('imagemode.test')) }}:{{ ahdapa_port }}/.well-known/openid-configuration"
+    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + (ipadomain | default('imagemode.test'))) }}:{{ ahdapa_port }}/.well-known/openid-configuration"
     validate_certs: false
     return_content: true
   register: oidc_discovery
@@ -13,7 +13,7 @@
 
 - name: OAuth2 client credentials grant
   uri:
-    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + ipadomain | default('imagemode.test')) }}:{{ ahdapa_port }}/token"
+    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + (ipadomain | default('imagemode.test'))) }}:{{ ahdapa_port }}/token"
     method: POST
     body_format: form-urlencoded
     body:
@@ -31,7 +31,7 @@
 
 - name: ACME directory
   uri:
-    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + ipadomain | default('imagemode.test')) }}:{{ akamu_port }}/acme/directory"
+    url: "https://{{ ansible_fqdn | default(inventory_hostname + '.' + (ipadomain | default('imagemode.test'))) }}:{{ akamu_port }}/acme/directory"
     validate_certs: false
     return_content: true
   register: acme_directory

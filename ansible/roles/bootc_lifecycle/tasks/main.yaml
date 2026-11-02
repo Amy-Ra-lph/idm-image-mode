@@ -36,6 +36,15 @@
   delay: "{{ bootc_ipactl_delay }}"
   until: ipactl_result.rc == 0
 
+- name: Wait for idm-post-upgrade.service to finish
+  command: systemctl is-active idm-post-upgrade.service
+  register: post_upgrade_svc
+  retries: 60
+  delay: 10
+  until: post_upgrade_svc.rc != 0
+  failed_when: false
+  changed_when: false
+
 - name: Check current freeipa-server version
   shell: rpm -q freeipa-server
   register: current_version

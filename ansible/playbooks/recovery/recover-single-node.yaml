@@ -42,7 +42,7 @@
     - name: Remove server from IPA topology
       freeipa.ansible_freeipa.ipaserver:
         ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
-        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + ipadomain | default('imagemode.test')) }}"
+        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + (ipadomain | default('imagemode.test'))) }}"
         state: absent
         force: true
         ignore_topology_disconnect: true
@@ -51,7 +51,7 @@
     - name: Remove host entry
       freeipa.ansible_freeipa.ipahost:
         ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
-        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + ipadomain | default('imagemode.test')) }}"
+        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + (ipadomain | default('imagemode.test'))) }}"
         state: absent
         updatedns: true
       ignore_errors: true
@@ -59,7 +59,7 @@
     - name: Re-add host entry
       freeipa.ansible_freeipa.ipahost:
         ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
-        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + ipadomain | default('imagemode.test')) }}"
+        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + (ipadomain | default('imagemode.test'))) }}"
         ip_address: "{{ hostvars[target_node].ansible_default_ipv4.address | default(hostvars[target_node].ansible_host) }}"
         force: true
         state: present

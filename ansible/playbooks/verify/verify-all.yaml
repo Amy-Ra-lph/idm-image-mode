@@ -10,12 +10,12 @@
     - name: Verify domain topology suffix
       shell: |
         echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
-        ipa topologysuffix-verify --suffix=domain
+        ipa topologysuffix-verify domain
       register: domain_topo
       changed_when: false
 
     - name: Verify CA topology suffix
-      command: ipa topologysuffix-verify --suffix=ca
+      command: ipa topologysuffix-verify ca
       register: ca_topo
       changed_when: false
 
@@ -59,7 +59,7 @@
         echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
         {% for host in groups['all'] %}
         {% if host != inventory_hostname %}
-        kvno HTTP/{{ hostvars[host].ansible_fqdn | default(host + '.' + ipadomain | default('imagemode.test')) }}
+        kvno HTTP/{{ hostvars[host].ansible_fqdn | default(host + '.' + (ipadomain | default('imagemode.test'))) }}
         {% endif %}
         {% endfor %}
       register: kvno_result

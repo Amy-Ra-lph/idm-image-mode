@@ -27,14 +27,9 @@
         ipaserver_no_dnssec_validation: true
         ipaserver_no_ntp: true
   post_tasks:
-    - name: Gather package facts
-      package_facts:
-        manager: auto
-
     - name: Record image version stamp
-      copy:
-        content: "{{ ansible_facts.packages['freeipa-server'][0].version }}-{{ ansible_facts.packages['freeipa-server'][0].release }}"
-        dest: /var/lib/idm-image-mode/.image-version
+      shell: rpm -q freeipa-server > /var/lib/idm-image-mode/.image-version
+      changed_when: true
 
     - name: Verify primary health
       include_role:
@@ -72,21 +67,13 @@
         - { path: /etc/ipa/kdcproxy }
 
     # WID lesson #46: add swap for pkispawn OOM
-    - name: Create swap file for CA setup
-      command: dd if=/dev/zero of=/var/swapfile bs=1M count=1024
-      args:
-        creates: /var/swapfile
-
-    - name: Set swap file permissions
-      file:
-        path: /var/swapfile
-        mode: "0600"
-      when: ansible_swaptotal_mb < 512
-
-    - name: Configure swap
-      shell: mkswap /var/swapfile && swapon /var/swapfile
-      ignore_errors: true
-      when: ansible_swaptotal_mb < 512
+    - name: Create and activate swap file
+      shell: |
+        if [ ! -f /var/swapfile ]; then
+          dd if=/dev/zero of=/var/swapfile bs=1M count=1024
+          chmod 600 /var/swapfile && mkswap /var/swapfile
+        fi
+        swapon /var/swapfile 2>/dev/null || true
 
   roles:
     - role: ipareplica
@@ -102,14 +89,9 @@
         ipareplica_skip_conncheck: true
 
   post_tasks:
-    - name: Gather package facts
-      package_facts:
-        manager: auto
-
     - name: Record image version stamp
-      copy:
-        content: "{{ ansible_facts.packages['freeipa-server'][0].version }}-{{ ansible_facts.packages['freeipa-server'][0].release }}"
-        dest: /var/lib/idm-image-mode/.image-version
+      shell: rpm -q freeipa-server > /var/lib/idm-image-mode/.image-version
+      changed_when: true
 
     - name: Verify replica health
       include_role:

@@ -1,6 +1,6 @@
 [Unit]
 Description=IdM Image Mode Post-Upgrade Check
-After=dirsrv@.service ipa.service
+After=dirsrv.target ipa.service
 ConditionPathExists=/var/lib/idm-image-mode/.firstboot-complete
 
 [Service]

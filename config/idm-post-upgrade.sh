@@ -18,7 +18,7 @@ wait_for_ds() {
     local delay=5
     local i
     for i in $(seq 1 "$retries"); do
-        if ldapwhoami -Y EXTERNAL -H ldapi://%2Fvar%2Frun%2Fslapd-*.socket 2>/dev/null; then
+        if ldapwhoami -Y EXTERNAL -H ldapi:/// 2>/dev/null; then
             return 0
         fi
         log "Waiting for 389-DS... ($i/$retries)"
@@ -36,7 +36,7 @@ if [[ -f "$STAMP_FILE" ]]; then
         BACKUP_DIR="$BACKUP_BASE/$(date +%Y%m%d-%H%M%S)"
         mkdir -p "$BACKUP_DIR"
         cp /var/lib/ipa/sysupgrade/sysupgrade.state "$BACKUP_DIR/" 2>/dev/null || true
-        ldapsearch -Y EXTERNAL -H ldapi://%2Fvar%2Frun%2Fslapd-*.socket \
+        ldapsearch -Y EXTERNAL -H ldapi:/// \
             -b "cn=schema" -s base objectClasses attributeTypes \
             > "$BACKUP_DIR/schema-before.ldif" 2>/dev/null || true
 
