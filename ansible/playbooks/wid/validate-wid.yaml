@@ -1,0 +1,27 @@
+---
+# Standalone WID validation
+# Usage: ansible-playbook -i inventory/imagemode playbooks/wid/validate-wid.yaml
+
+- name: Validate WID services
+  hosts: all
+  become: true
+  tasks:
+    - name: Verify WID endpoints
+      include_role:
+        name: verify_wid
+
+- name: Verify replication consistency
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Replication check
+      include_role:
+        name: verify_replication
+      vars:
+        verify_all_peers: true
+
+    - name: Full suite with WID
+      include_role:
+        name: verify_full_suite
+      vars:
+        wid_enabled: true

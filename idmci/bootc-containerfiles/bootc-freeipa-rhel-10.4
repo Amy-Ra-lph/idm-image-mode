@@ -1,0 +1,23 @@
+# idm-ci build convention Containerfile for FreeIPA on RHEL 10.4 bootc
+# Adapted from Containerfile.server-rhel10 for mrack pipeline
+
+FROM registry.redhat.io/rhel10/rhel-bootc:10.4
+
+RUN dnf install -y \
+    freeipa-server \
+    freeipa-server-dns \
+    freeipa-server-trust-ad \
+    cloud-init \
+    qemu-guest-agent \
+    && dnf clean all
+
+RUN mkdir -p /var/lib/idm-image-mode /var/lib/ipa/html
+RUN ln -sf /var/lib/ipa/html /usr/share/ipa/html
+
+COPY config/idm-firstboot.sh /usr/local/bin/idm-firstboot.sh
+COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
+COPY config/idm-post-upgrade.sh /usr/local/bin/idm-post-upgrade.sh
+COPY config/idm-post-upgrade.service /etc/systemd/system/idm-post-upgrade.service
+
+RUN chmod 755 /usr/local/bin/idm-firstboot.sh /usr/local/bin/idm-post-upgrade.sh
+RUN systemctl enable idm-firstboot.service idm-post-upgrade.service cloud-init.service qemu-guest-agent.service

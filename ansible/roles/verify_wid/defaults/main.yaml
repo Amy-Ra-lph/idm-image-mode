@@ -1,0 +1,5 @@
+---
+ahdapa_port: 8090
+akamu_port: 19443
+wid_test_client_id: test-verify-client
+wid_test_client_secret: verify-secret-2026

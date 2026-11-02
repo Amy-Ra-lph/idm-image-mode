@@ -1,0 +1,79 @@
+---
+# idm-ci metadata for 4-node bootc cluster
+# Provision via mrack: mrack up -c 4-replica-bootc-metadata.yaml
+
+topology:
+  name: 4-replica-bootc
+  description: "FreeIPA 4-node cluster on RHEL 10 bootc (Image Mode)"
+
+hosts:
+  - name: primary
+    role: ipa_primary
+    group: ipaserver
+    os: rhel-10.4-bootc
+    image: Containerfile.server-rhel10
+    requirements:
+      vcpus: 4
+      memory: 8192
+      disk: 40
+
+  - name: replica1
+    role: ipa_replica
+    group: ipareplicas
+    os: rhel-10.4-bootc
+    image: Containerfile.server-rhel10
+    requirements:
+      vcpus: 4
+      memory: 8192
+      disk: 40
+
+  - name: replica2
+    role: ipa_replica
+    group: ipareplicas
+    os: rhel-10.4-bootc
+    image: Containerfile.server-rhel10
+    requirements:
+      vcpus: 4
+      memory: 8192
+      disk: 40
+
+  - name: replica3
+    role: ipa_replica
+    group: ipareplicas
+    os: rhel-10.4-bootc
+    image: Containerfile.server-rhel10
+    requirements:
+      vcpus: 4
+      memory: 4096
+      disk: 40
+
+phases:
+  - name: init
+    description: "Build bootc server image"
+    steps:
+      - podman build -t localhost/idm-image-mode-server-rhel10:latest -f Containerfile.server-rhel10 .
+
+  - name: provision
+    description: "Provision 4 VMs via Beaker/OpenStack"
+    steps:
+      - mrack up
+
+  - name: prep
+    description: "Inject config and prepare nodes"
+    steps:
+      - ansible-playbook -i inventory/imagemode.ini playbooks/cluster/inject-config.yaml
+
+  - name: install
+    description: "Deploy 4-node cluster"
+    steps:
+      - ansible-playbook -i inventory/imagemode.ini playbooks/cluster/deploy-cluster.yaml
+
+  - name: test
+    description: "Verify cluster health and replication"
+    steps:
+      - ansible-playbook -i inventory/imagemode.ini playbooks/verify/verify-all.yaml
+
+  - name: teardown
+    description: "Deprovision VMs"
+    steps:
+      - mrack destroy
