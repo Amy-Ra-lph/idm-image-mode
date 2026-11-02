@@ -1,0 +1,79 @@
+---
+# Rolling image upgrade with verification gates
+# Usage: ansible-playbook -i inventory/imagemode playbooks/lifecycle/rolling-upgrade.yaml
+#        [-e bootc_image=<new-image-ref>]
+#        [-e upgrade_order=replica3,replica2,replica1,primary]
+
+- name: Pre-upgrade baseline verification
+  hosts: all
+  become: true
+  tasks:
+    - name: Run full verification suite
+      include_role:
+        name: verify_full_suite
+
+    - name: Backup pre-upgrade state
+      include_role:
+        name: backup_ipa_state
+      vars:
+        backup_label: "pre-upgrade-{{ ansible_date_time.iso8601_basic_short }}"
+        include_lmdb: true
+
+- name: Rolling upgrade
+  hosts: "{{ upgrade_order | default('ipa_replicas:ipa_primary') }}"
+  become: true
+  serial: 1
+  tasks:
+    - name: Stage new image
+      command: "{{ 'bootc switch ' + bootc_image if bootc_image is defined else 'bootc upgrade --apply' }}"
+      register: bootc_result
+
+    - name: Reboot into new image
+      reboot:
+        reboot_timeout: 300
+
+    - name: Wait for IPA services
+      command: ipactl status
+      register: ipactl_result
+      retries: 12
+      delay: 15
+      until: ipactl_result.rc == 0
+
+    - name: Check current freeipa-server version
+      shell: rpm -q freeipa-server
+      register: new_version
+      changed_when: false
+
+    - name: Read previous version stamp
+      slurp:
+        src: /var/lib/idm-image-mode/.image-version
+      register: prev_stamp
+      ignore_errors: true
+
+    - name: Run ipa-server-upgrade if version changed
+      command: ipa-server-upgrade
+      when: >
+        prev_stamp is failed or
+        (prev_stamp.content | b64decode | trim) != new_version.stdout
+
+    - name: Update version stamp
+      copy:
+        content: "{{ new_version.stdout }}"
+        dest: /var/lib/idm-image-mode/.image-version
+
+    - name: Post-upgrade verification gate
+      include_role:
+        name: verify_full_suite
+
+    - name: Verify replication to all peers
+      include_role:
+        name: verify_replication
+      vars:
+        verify_all_peers: true
+
+    - name: Assert verification passed
+      assert:
+        that: verification_passed | default(false)
+        fail_msg: >
+          Verification failed after upgrading {{ inventory_hostname }}.
+          Remaining nodes NOT upgraded. Run rollback-node.yaml to recover.

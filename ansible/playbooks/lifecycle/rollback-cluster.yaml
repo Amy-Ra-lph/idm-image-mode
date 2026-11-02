@@ -1,0 +1,57 @@
+---
+# R6: Full cluster rollback — all nodes return to previous image
+# Usage: ansible-playbook -i inventory/imagemode playbooks/lifecycle/rollback-cluster.yaml
+#
+# Rolls back replicas first, primary last (reverse of upgrade order)
+
+- name: Roll back all nodes
+  hosts: ipa_replicas:ipa_primary
+  become: true
+  serial: 1
+  order: reverse_sorted
+  tasks:
+    - name: Rollback bootc image
+      command: bootc rollback
+
+    - name: Reboot
+      reboot:
+        reboot_timeout: 300
+
+    - name: Wait for IPA services
+      command: ipactl status
+      register: ipactl_result
+      retries: 12
+      delay: 15
+      until: ipactl_result.rc == 0
+
+- name: Handle sysupgrade state and verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Restore sysupgrade state from backup if available
+      shell: |
+        LATEST=$(ls -1t /var/lib/idm-image-mode/backups/pre-upgrade-*/sysupgrade.state 2>/dev/null | head -1)
+        if [ -n "$LATEST" ]; then
+          cp "$LATEST" /var/lib/ipa/sysupgrade/sysupgrade.state
+          echo "restored"
+        else
+          echo "no backup found, keeping current"
+        fi
+      register: restore_result
+      changed_when: "'restored' in restore_result.stdout"
+
+    - name: Run ipa-server-upgrade
+      command: ipa-server-upgrade
+      ignore_errors: true
+
+    - name: Update version stamp
+      shell: rpm -q freeipa-server > /var/lib/idm-image-mode/.image-version
+      changed_when: true
+
+- name: Final verification
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Full verification suite
+      include_role:
+        name: verify_full_suite
