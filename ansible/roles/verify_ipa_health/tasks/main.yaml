@@ -1,0 +1,33 @@
+---
+- name: Check IPA services running
+  command: ipactl status
+  register: ipactl_result
+  changed_when: false
+  failed_when: ipactl_result.rc != 0
+
+- name: Verify required ports are listening
+  wait_for:
+    port: "{{ item }}"
+    timeout: 5
+  loop: "{{ verify_ports }}"
+
+- name: Obtain Kerberos ticket
+  shell: echo "{{ verify_admin_password }}" | kinit admin
+  changed_when: false
+  no_log: true
+
+- name: Verify IPA API responds
+  command: ipa ping
+  changed_when: false
+
+- name: Verify certificate subsystem
+  command: ipa cert-show 1
+  changed_when: false
+
+- name: Destroy Kerberos ticket
+  command: kdestroy
+  changed_when: false
+
+- name: Set health check result
+  set_fact:
+    ipa_health_passed: true
