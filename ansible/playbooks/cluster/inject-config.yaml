@@ -9,7 +9,7 @@
     idm_realm: "{{ iparealm | default('IMAGEMODE.TEST') }}"
     idm_admin_password: "{{ ipaadmin_password | default('Secret123') }}"
     idm_dm_password: "{{ ipadm_password | default('Secret123') }}"
-    idm_dns_forwarder: "{{ dns_forwarder | default('10.11.5.19') }}"
+    idm_dns_forwarder: "{{ dns_forwarder | default('8.8.8.8') }}"
     idm_primary_host: "{{ hostvars[groups['ipa_primary'][0]].ansible_fqdn | default('primary.' + idm_domain) }}"
   tasks:
     - name: Create config directory

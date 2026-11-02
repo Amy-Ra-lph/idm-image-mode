@@ -23,7 +23,7 @@
         ipaserver_setup_dns: true
         ipaserver_auto_forwarders: false
         ipaserver_forwarders:
-          - "{{ dns_forwarder | default('10.11.5.19') }}"
+          - "{{ dns_forwarder | default('8.8.8.8') }}"
         ipaserver_no_dnssec_validation: true
         ipaserver_no_ntp: true
   post_tasks:
@@ -83,7 +83,7 @@
         ipareplica_setup_ca: true
         ipareplica_setup_dns: true
         ipareplica_forwarders:
-          - "{{ dns_forwarder | default('10.11.5.19') }}"
+          - "{{ dns_forwarder | default('8.8.8.8') }}"
         ipareplica_no_dnssec_validation: true
         ipareplica_no_ntp: true
         ipareplica_skip_conncheck: true

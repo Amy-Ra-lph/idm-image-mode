@@ -121,7 +121,7 @@
         ipareplica_setup_ca: true
         ipareplica_setup_dns: true
         ipareplica_forwarders:
-          - "{{ dns_forwarder | default('10.11.5.19') }}"
+          - "{{ dns_forwarder | default('8.8.8.8') }}"
         ipareplica_no_dnssec_validation: true
         ipareplica_no_ntp: true
         ipareplica_skip_conncheck: true
