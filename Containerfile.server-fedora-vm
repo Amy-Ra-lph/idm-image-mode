@@ -1,0 +1,42 @@
+# Containerfile.server-fedora-vm — Fedora bootc VM image for FreeIPA/IdM server
+#
+# KVM-ready image with cloud-init, qemu-guest-agent, firstboot provisioning,
+# and post-upgrade detection. Same image handles primary and replica roles —
+# IDM_ROLE in config.env determines which installer runs at first boot.
+#
+# Build container image:
+#   podman build -t localhost/idm-image-mode-server-fedora:latest \
+#     -f Containerfile.server-fedora-vm .
+#
+# Convert to qcow2 for KVM:
+#   sudo podman run --rm -it --privileged --pull=newer \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type qcow2 \
+#     localhost/idm-image-mode-server-fedora:latest
+
+FROM quay.io/fedora/fedora-bootc:44
+
+RUN dnf install -y \
+        freeipa-server \
+        freeipa-server-dns \
+        freeipa-server-trust-ad \
+        cloud-init \
+        qemu-guest-agent \
+    && dnf clean all
+
+# Redirect FreeIPA's /usr writes to /var — bootc makes /usr read-only (ostree)
+RUN mkdir -p /var/lib/idm-image-mode /var/lib/ipa/html \
+    && cp -a /usr/share/ipa/html/. /var/lib/ipa/html/ 2>/dev/null || true \
+    && rm -rf /usr/share/ipa/html \
+    && ln -s /var/lib/ipa/html /usr/share/ipa/html
+
+COPY config/idm-firstboot.sh /usr/local/sbin/idm-firstboot
+COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
+COPY config/idm-post-upgrade.sh /usr/local/sbin/idm-post-upgrade
+COPY config/idm-post-upgrade.service /etc/systemd/system/idm-post-upgrade.service
+COPY config/config.env.example /etc/idm-image-mode/config.env.example
+
+RUN chmod 755 /usr/local/sbin/idm-firstboot /usr/local/sbin/idm-post-upgrade \
+    && systemctl enable idm-firstboot.service idm-post-upgrade.service \
+                        qemu-guest-agent.service

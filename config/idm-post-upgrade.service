@@ -1,0 +1,13 @@
+[Unit]
+Description=IdM Image Mode Post-Upgrade Check
+After=dirsrv.target ipa.service
+ConditionPathExists=/var/lib/idm-image-mode/.firstboot-complete
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/local/sbin/idm-post-upgrade
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
