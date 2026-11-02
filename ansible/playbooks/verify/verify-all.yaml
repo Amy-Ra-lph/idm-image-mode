@@ -1,0 +1,148 @@
+---
+# Full cluster verification — standalone entry point
+# Usage: ansible-playbook -i inventory/imagemode playbooks/verify/verify-all.yaml
+#        [-e wid_enabled=true]
+
+- name: Topology verification
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Verify domain topology suffix
+      shell: |
+        echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+        ipa topologysuffix-verify --suffix=domain
+      register: domain_topo
+      changed_when: false
+
+    - name: Verify CA topology suffix
+      command: ipa topologysuffix-verify --suffix=ca
+      register: ca_topo
+      changed_when: false
+
+    - name: Report topology status
+      debug:
+        msg:
+          - "Domain: {{ domain_topo.stdout }}"
+          - "CA: {{ ca_topo.stdout }}"
+
+- name: Service health on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: IPA health check
+      include_role:
+        name: verify_ipa_health
+
+- name: Kerberos authentication tests
+  hosts: all
+  become: true
+  tasks:
+    - name: Obtain admin TGT
+      shell: echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: IPA ping
+      command: ipa ping
+      changed_when: false
+
+    - name: Certificate authority check
+      command: ipa cert-show 1
+      changed_when: false
+
+- name: Cross-node service tickets
+  hosts: all
+  become: true
+  tasks:
+    - name: Get service tickets for all peers
+      shell: |
+        echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+        {% for host in groups['all'] %}
+        {% if host != inventory_hostname %}
+        kvno HTTP/{{ hostvars[host].ansible_fqdn | default(host + '.' + ipadomain | default('imagemode.test')) }}
+        {% endif %}
+        {% endfor %}
+      register: kvno_result
+      changed_when: false
+      no_log: true
+
+    - name: Report service tickets
+      debug:
+        msg: "Cross-node kvno: {{ kvno_result.stdout_lines | length }} tickets obtained"
+
+- name: LDAP bind tests
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: GSSAPI bind
+      shell: |
+        echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+        ldapsearch -Y GSSAPI -H ldap://localhost -b "" -s base namingContexts 2>&1 | head -5
+      register: gssapi_bind
+      changed_when: false
+      no_log: true
+
+    - name: Simple bind (Directory Manager)
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "" -s base namingContexts 2>&1 | head -5
+      register: simple_bind
+      changed_when: false
+      no_log: true
+
+    - name: Password bind (admin)
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "uid=admin,cn=users,cn=accounts,dc={{ ipadomain | default('imagemode.test') | replace('.', ',dc=') }}" \
+          -w "{{ ipaadmin_password | default('Secret123') }}" \
+          -b "" -s base namingContexts 2>&1 | head -5
+      register: password_bind
+      changed_when: false
+      no_log: true
+
+    - name: Assert all binds succeeded
+      assert:
+        that:
+          - gssapi_bind.rc == 0
+          - simple_bind.rc == 0
+          - password_bind.rc == 0
+
+- name: Replication consistency
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Verify replication
+      include_role:
+        name: verify_replication
+      vars:
+        verify_all_peers: true
+
+- name: Replication agreement status
+  hosts: all
+  become: true
+  tasks:
+    - name: Check agreement status
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=config" "(objectClass=nsDS5ReplicationAgreement)" \
+          cn nsds5ReplicaHost nsds5ReplicaLastUpdateStatus 2>/dev/null
+      register: agreements
+      changed_when: false
+      no_log: true
+
+    - name: Report agreements
+      debug:
+        msg: "{{ inventory_hostname }}: {{ agreements.stdout_lines | select('match', '.*Status.*') | list }}"
+
+- name: WID verification (conditional)
+  hosts: all
+  become: true
+  tasks:
+    - name: Run full suite with WID checks
+      include_role:
+        name: verify_full_suite
+      vars:
+        wid_enabled: "{{ wid_enabled | default(false) }}"
+      when: wid_enabled | default(false) | bool

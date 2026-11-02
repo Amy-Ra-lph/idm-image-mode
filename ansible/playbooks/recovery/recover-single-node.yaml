@@ -1,0 +1,132 @@
+---
+# R1: Single node recovery — uninstall, remove from topology, re-enroll
+# Usage: ansible-playbook -i inventory/imagemode playbooks/recovery/recover-single-node.yaml
+#        -e target_node=replica3
+
+- name: Uninstall IPA on failed node
+  hosts: "{{ target_node }}"
+  become: true
+  tasks:
+    - name: Rollback bootc image
+      command: bootc rollback
+      ignore_errors: true
+
+    - name: Reboot
+      reboot:
+        reboot_timeout: 300
+
+    - name: Check if services recovered
+      command: ipactl status
+      register: ipactl_check
+      ignore_errors: true
+
+    - name: Skip recovery if services OK
+      meta: end_host
+      when: ipactl_check.rc == 0
+
+    - name: Nuclear cleanup
+      include_role:
+        name: nuclear_cleanup
+
+- name: Remove from topology
+  hosts: ipa_primary
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  tasks:
+    - name: Obtain admin TGT
+      shell: echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Remove server from IPA topology
+      freeipa.ansible_freeipa.ipaserver:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + ipadomain | default('imagemode.test')) }}"
+        state: absent
+        force: true
+        ignore_topology_disconnect: true
+      ignore_errors: true
+
+    - name: Remove host entry
+      freeipa.ansible_freeipa.ipahost:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + ipadomain | default('imagemode.test')) }}"
+        state: absent
+        updatedns: true
+      ignore_errors: true
+
+    - name: Re-add host entry
+      freeipa.ansible_freeipa.ipahost:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        name: "{{ hostvars[target_node].ansible_fqdn | default(target_node + '.' + ipadomain | default('imagemode.test')) }}"
+        ip_address: "{{ hostvars[target_node].ansible_default_ipv4.address | default(hostvars[target_node].ansible_host) }}"
+        force: true
+        state: present
+
+    - name: Restart IPA services
+      command: ipactl restart
+
+- name: Re-enroll node
+  hosts: "{{ target_node }}"
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  pre_tasks:
+    - name: Create IPA directory tree
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode | default('0755') }}"
+      loop:
+        - { path: /var/lib/ipa/sysrestore }
+        - { path: /var/lib/ipa/sysupgrade }
+        - { path: /var/lib/ipa/gssproxy }
+        - { path: /var/lib/ipa/passwds, mode: '0700' }
+        - { path: /var/lib/ipa/certs }
+        - { path: /var/lib/ipa/private, mode: '0700' }
+        - { path: /var/lib/ipa/backup }
+        - { path: /var/lib/ipa/pki-ca/publish }
+        - { path: /var/lib/ipa/dnssec/tokens }
+        - { path: /var/kerberos/krb5kdc }
+        - { path: /var/kerberos/krb5/user }
+        - { path: /etc/ipa/custodia }
+        - { path: /etc/ipa/dnssec }
+        - { path: /etc/ipa/html }
+        - { path: /etc/ipa/nssdb }
+        - { path: /etc/ipa/kdcproxy }
+
+    - name: Restore SELinux contexts
+      command: restorecon -Rv {{ item }}
+      loop:
+        - /var/lib/ipa
+        - /var/lib/dirsrv
+        - /var/kerberos
+        - /etc/ipa
+      ignore_errors: true
+
+    - name: Ensure swap exists
+      shell: |
+        if [ ! -f /var/swapfile ]; then
+          dd if=/dev/zero of=/var/swapfile bs=1M count=1024
+          chmod 600 /var/swapfile && mkswap /var/swapfile
+        fi
+        swapon /var/swapfile 2>/dev/null || true
+
+  roles:
+    - role: ipareplica
+      vars:
+        ipaadmin_password: "{{ ipaadmin_password | default('Secret123') }}"
+        ipadm_password: "{{ ipadm_password | default('Secret123') }}"
+        ipareplica_setup_ca: true
+        ipareplica_setup_dns: true
+        ipareplica_forwarders:
+          - "{{ dns_forwarder | default('10.11.5.19') }}"
+        ipareplica_no_dnssec_validation: true
+        ipareplica_no_ntp: true
+        ipareplica_skip_conncheck: true
+
+  post_tasks:
+    - name: Full verification
+      include_role:
+        name: verify_full_suite

@@ -1,0 +1,104 @@
+---
+# R2: Replication repair — diagnose and fix stale agreements
+# Usage: ansible-playbook -i inventory/imagemode playbooks/recovery/repair-replication.yaml
+#        [-e reinitialize_target=replica3]
+
+- name: Diagnose replication
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Obtain admin TGT
+      shell: echo "{{ ipaadmin_password | default('Secret123') }}" | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Verify domain topology
+      command: ipa topologysuffix-verify --suffix=domain
+      register: domain_verify
+      changed_when: false
+      ignore_errors: true
+
+    - name: Verify CA topology
+      command: ipa topologysuffix-verify --suffix=ca
+      register: ca_verify
+      changed_when: false
+      ignore_errors: true
+
+    - name: Report topology status
+      debug:
+        msg:
+          - "Domain: {{ domain_verify.stdout | default('FAILED') }}"
+          - "CA: {{ ca_verify.stdout | default('FAILED') }}"
+
+- name: Check agreement status on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Query replication agreements
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=config" "(objectClass=nsDS5ReplicationAgreement)" \
+          cn nsds5ReplicaHost nsds5ReplicaLastUpdateStatus \
+          nsds5ReplicaLastUpdateEnd nsds5ReplicaEnabled 2>/dev/null
+      register: agreement_status
+      changed_when: false
+      no_log: true
+
+    - name: Detect error agreements
+      shell: |
+        echo "{{ agreement_status.stdout }}" | \
+          grep -B2 -A1 "nsds5ReplicaLastUpdateStatus:.*Error" || echo "No errors found"
+      register: error_agreements
+      changed_when: false
+
+    - name: Report errors
+      debug:
+        msg: "{{ inventory_hostname }}: {{ error_agreements.stdout_lines }}"
+
+    - name: Detect disabled agreements
+      shell: |
+        echo "{{ agreement_status.stdout }}" | \
+          grep -B3 "nsds5ReplicaEnabled: off" || echo "All agreements enabled"
+      register: disabled_agreements
+      changed_when: false
+
+    - name: Re-enable disabled agreements
+      shell: |
+        ldapsearch -xLLL -H ldaps://localhost \
+          -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" \
+          -b "cn=config" "(&(objectClass=nsDS5ReplicationAgreement)(nsds5ReplicaEnabled=off))" \
+          dn 2>/dev/null | grep "^dn:" | while read -r line; do
+            DN=$(echo "$line" | sed 's/^dn: //')
+            ldapmodify -x -H ldaps://localhost \
+              -D "cn=Directory Manager" -w "{{ ipadm_password | default('Secret123') }}" <<LDIF
+        dn: $DN
+        changetype: modify
+        replace: nsds5ReplicaEnabled
+        nsds5ReplicaEnabled: on
+        LDIF
+          done
+      when: "'nsds5ReplicaEnabled: off' in disabled_agreements.stdout"
+      no_log: true
+
+- name: Re-initialize if requested
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Re-initialize target replica
+      command: ipa-replica-manage re-initialize --from={{ inventory_hostname }} {{ reinitialize_target }}
+      when: reinitialize_target is defined
+
+- name: Post-repair verification
+  hosts: ipa_primary
+  become: true
+  tasks:
+    - name: Verify replication
+      include_role:
+        name: verify_replication
+      vars:
+        verify_all_peers: true
+
+    - name: Full verification
+      include_role:
+        name: verify_full_suite
