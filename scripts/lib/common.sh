@@ -27,8 +27,18 @@ NETWORK_GATEWAY="10.99.0.1"
 declare -A NODE_IPS=(
     [primary]="10.99.0.10"
     [replica]="10.99.0.11"
+    [replica2]="10.99.0.13"
+    [replica3]="10.99.0.14"
     [client]="10.99.0.12"
 )
+
+# Convenience aliases for 4-node cluster
+IDM_REPLICA2_IP="10.99.0.13"
+IDM_REPLICA3_IP="10.99.0.14"
+
+# ── RHEL 10 Image Defaults ──────────────────────────────────────────
+IDM_RHEL10_IMAGE="images.paas.redhat.com/bootc/rhel-bootc:latest-10.4"
+IDM_SERVER_IMAGE_RHEL10="localhost/idm-image-mode-server-rhel10:latest"
 
 # ── Logging ──────────────────────────────────────────────────────────
 _RED='\033[0;31m'

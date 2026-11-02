@@ -1,0 +1,48 @@
+FROM images.paas.redhat.com/bootc/rhel-bootc:latest-10.4
+
+# RHEL 10 repos (nightly compose)
+RUN cat <<'REPOEOF' >> /etc/yum.repos.d/rhel-10.repo
+[rhel10.4-baseos]
+name=rhel10.4-baseos
+baseurl=http://download.devel.redhat.com/rhel-10/nightly/RHEL-10/latest-RHEL-10.4/compose/BaseOS/x86_64/os/
+enabled=1
+gpgcheck=0
+[rhel10.4-appstream]
+name=rhel10.4-appstream
+baseurl=http://download.devel.redhat.com/rhel-10/nightly/RHEL-10/latest-RHEL-10.4/compose/AppStream/x86_64/os/
+enabled=1
+gpgcheck=0
+REPOEOF
+
+# FreeIPA server + DNS + trust
+RUN dnf install -y \
+        freeipa-server \
+        freeipa-server-dns \
+        freeipa-server-trust-ad \
+    && dnf clean all
+
+# bootc infrastructure
+RUN dnf install -y cloud-init qemu-guest-agent \
+    && systemctl enable cloud-init qemu-guest-agent
+
+# fstab for bootc root
+RUN echo "LABEL=root / ext4 defaults 0 1" >> /etc/fstab
+
+# Firstboot provisioning
+COPY config/idm-firstboot.sh /usr/local/sbin/idm-firstboot
+COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
+RUN chmod 755 /usr/local/sbin/idm-firstboot \
+    && mkdir -p /var/lib/idm-image-mode \
+    && systemctl enable idm-firstboot.service
+
+# Redirect /usr/share/ipa/html → /var (bootc makes /usr read-only)
+RUN mkdir -p /var/lib/ipa/html \
+    && cp -a /usr/share/ipa/html/. /var/lib/ipa/html/ 2>/dev/null || true \
+    && rm -rf /usr/share/ipa/html \
+    && ln -s /var/lib/ipa/html /usr/share/ipa/html
+
+# Image upgrade hook (detects version change on boot)
+COPY config/idm-post-upgrade.sh /usr/local/sbin/idm-post-upgrade
+COPY config/idm-post-upgrade.service /etc/systemd/system/idm-post-upgrade.service
+RUN chmod 755 /usr/local/sbin/idm-post-upgrade \
+    && systemctl enable idm-post-upgrade.service
