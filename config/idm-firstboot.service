@@ -16,6 +16,7 @@ TimeoutStartSec=1800
 ExecStartPre=/usr/bin/mkdir -p /var/lib/idm-image-mode
 ExecStart=/usr/local/sbin/idm-firstboot
 ExecStartPost=/usr/bin/touch /var/lib/idm-image-mode/.firstboot-complete
+ExecStartPost=/usr/bin/systemctl start idm-post-upgrade.service
 
 StandardOutput=journal+console
 StandardError=journal+console
