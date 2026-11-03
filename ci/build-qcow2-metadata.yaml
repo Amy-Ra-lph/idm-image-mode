@@ -1,0 +1,69 @@
+# Pull idm-oauth2-bootc images and convert each one to a qcow2 disk
+# with bootc-image-builder. Point the Jenkins trigger-test-suite-tool
+# IDMCI_METADATA_URL parameter at this file.
+#
+# Disks are written on the builder and removed by teardown:
+#   /var/idm-oauth2-bootc/server-base.qcow2
+#   /var/idm-oauth2-bootc/server-oauth2.qcow2
+#   /var/idm-oauth2-bootc/client.qcow2
+ssh_key_filename: ~/.ssh/id_rsa
+domains:
+  - name: eagle.test
+    type: infra
+    hosts:
+      - name: oauth2-bootc.eagle.test
+        group: ipaserver
+        role: builder
+        os: fedora-44
+        # 12 VCPUs, 24 GB RAM, 120 GB disk. BIB needs the room for
+        # three container images plus their qcow2 output.
+        size: xxlarge
+phases:
+  - name: init
+    steps:
+      - playbook: init/testrunner-dir.yaml
+  - name: provision
+    steps:
+      - playbook: provision/mrack-up.yaml
+      - playbook: provision/wait.yaml
+  - name: prep
+    steps:
+      - playbook: prep/redhat-base.yaml
+      - command: dnf install -y podman
+        host: oauth2-bootc.eagle.test
+  - name: test
+    # Three sequential BIB conversions.
+    timeout: 28800
+    steps:
+      - command: |
+          set -euo pipefail
+          images=(
+            quay.io/rhel-security/idm-oauth2-bootc:server-base
+            quay.io/rhel-security/idm-oauth2-bootc:server-oauth2
+            quay.io/rhel-security/idm-oauth2-bootc:client
+          )
+          for image in "${images[@]}"; do
+            podman pull "${image}"
+          done
+          workdir=/var/idm-oauth2-bootc
+          mkdir -p "${workdir}"
+          for image in "${images[@]}"; do
+            tag="${image##*:}"
+            out="${workdir}/${tag}/output"
+            mkdir -p "${out}"
+            # --pull=newer refreshes bootc-image-builder. -t is omitted
+            # because trigger-tool has no TTY. unconfined_t lets the
+            # privileged build write the output dir under SELinux.
+            podman run --rm --privileged --pull=newer \
+              --security-opt label=type:unconfined_t \
+              -v "${out}:/output" \
+              quay.io/centos-bootc/bootc-image-builder:latest \
+              --rootfs xfs --type qcow2 \
+              "${image}"
+            cp "${out}/qcow2/disk.qcow2" "${workdir}/${tag}.qcow2"
+          done
+          ls -lh "${workdir}"/*.qcow2
+        host: oauth2-bootc.eagle.test
+  - name: teardown
+    steps:
+      - playbook: teardown/mrack-destroy.yaml
