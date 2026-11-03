@@ -1,0 +1,28 @@
+# Containerfile.server-fedora-oauth2 — OAuth2/WID stack layer for IdM Image Mode
+#
+# Layers the OAuth2 subsystem (IPA plugins, schema, post-upgrade hooks) onto
+# the base FreeIPA bootc image. Demonstrates the upgrade path: existing IdM
+# image mode clusters pull this image, reboot, and the OAuth2/WID stack
+# deploys automatically via post-upgrade hooks.
+#
+# Build:
+#   podman build -t localhost/idm-image-mode-server-fedora:latest \
+#     -f Containerfile.server-fedora-vm .
+#   podman build -t localhost/idm-image-mode-server-fedora-oauth2:latest \
+#     -f Containerfile.server-fedora-oauth2 .
+#
+# Convert to qcow2:
+#   sudo podman run --rm -it --privileged --pull=newer \
+#     -v /var/lib/containers/storage:/var/lib/containers/storage \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --rootfs xfs --type qcow2 \
+#     localhost/idm-image-mode-server-fedora-oauth2:latest
+
+FROM localhost/idm-image-mode-server-fedora:latest
+
+# Python dependency for token introspection plugin (GSSAPI auth to Keycloak)
+RUN dnf install -y python3-requests-gssapi && dnf clean all
+
+# IPA server plugins — OAuth2 client/scope/config/workload/delegation/vendor/token
+COPY config/ipa-plugins/ /usr/lib/python3.14/site-packages/ipaserver/plugins/
