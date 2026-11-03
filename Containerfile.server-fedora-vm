@@ -37,6 +37,12 @@ COPY config/idm-post-upgrade.sh /usr/local/sbin/idm-post-upgrade
 COPY config/idm-post-upgrade.service /etc/systemd/system/idm-post-upgrade.service
 COPY config/config.env.example /etc/idm-image-mode/config.env.example
 
+# Lab access — root password + claude user with SSH key and sudo
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
 RUN chmod 755 /usr/local/sbin/idm-firstboot /usr/local/sbin/idm-post-upgrade \
     && systemctl enable idm-firstboot.service idm-post-upgrade.service \
                         qemu-guest-agent.service
