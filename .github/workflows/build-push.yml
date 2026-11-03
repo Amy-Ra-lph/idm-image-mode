@@ -1,0 +1,85 @@
+name: Build and push bootc images to Quay
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Containerfile.*'
+      - 'config/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: quay.io
+  NAMESPACE: rhel-security
+  REPO: idm-oauth2-bootc
+
+jobs:
+  build-server-base:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Quay
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build server base image
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:server-base \
+            -f Containerfile.server-fedora-vm .
+
+      - name: Push server base image
+        run: |
+          podman push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:server-base
+
+  build-server-oauth2:
+    runs-on: ubuntu-latest
+    needs: build-server-base
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Quay
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Pull base image
+        run: |
+          podman pull ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:server-base
+          podman tag ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:server-base \
+            localhost/idm-image-mode-server-fedora:latest
+
+      - name: Build OAuth2 layer
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:server-oauth2 \
+            -f Containerfile.server-fedora-oauth2 .
+
+      - name: Push OAuth2 image
+        run: |
+          podman push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:server-oauth2
+
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Quay
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build client image
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:client \
+            -f Containerfile.client-fedora-vm .
+
+      - name: Push client image
+        run: |
+          podman push ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.REPO }}:client
