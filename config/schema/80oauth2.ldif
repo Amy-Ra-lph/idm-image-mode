@@ -1,0 +1,358 @@
+dn: cn=schema
+#
+# IPA OAuth2 Subsystem Schema
+#
+# OID base: 2.16.840.1.113730.3.8.24 (ipa-oauth2)
+# Allocated under the 389 DS / IPA arc (2.16.840.1.113730.3.8).
+# Sub-OID scheme:
+#   .1.N  = attribute types (N = sequential from 1)
+#   .2.N  = object classes  (N = sequential from 1)
+#
+################################################################################
+# Attribute Types
+################################################################################
+# RFC: oauth2ClientId maps to RFC 6749 Section 2.2 "client_id".
+# SINGLE-VALUE because each registration has exactly one client_id.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.1
+  NAME 'oauth2ClientId'
+  DESC 'OAuth2 client identifier'
+  EQUALITY caseIgnoreMatch
+  ORDERING caseIgnoreOrderingMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+# DESIGN: Octet String syntax (not Directory String) because the value is
+# a PBKDF2 hash with binary salt, stored as "salt_hex$hash_hex".
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.2
+  NAME 'oauth2ClientSecret'
+  DESC 'OAuth2 client secret (hashed)'
+  EQUALITY octetStringMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+# Multi-valued: a client may have multiple redirect URIs (RFC 6749 Sec 3.1.2).
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.3
+  NAME 'oauth2RedirectURI'
+  DESC 'OAuth2 authorized redirect URI'
+  EQUALITY caseIgnoreMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.4
+  NAME 'oauth2GrantType'
+  DESC 'OAuth2 grant type (authorization_code, client_credentials, etc.)'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.5
+  NAME 'oauth2Scope'
+  DESC 'OAuth2 scope value'
+  EQUALITY caseIgnoreMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.6
+  NAME 'oauth2ScopeDescription'
+  DESC 'Human-readable scope description'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.7
+  NAME 'oauth2TokenLifetime'
+  DESC 'Access token lifetime in seconds'
+  EQUALITY integerMatch
+  ORDERING integerOrderingMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.8
+  NAME 'oauth2RefreshTokenLifetime'
+  DESC 'Refresh token lifetime in seconds'
+  EQUALITY integerMatch
+  ORDERING integerOrderingMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.9
+  NAME 'oauth2ClientType'
+  DESC 'Client type: confidential or public'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.10
+  NAME 'oauth2Enabled'
+  DESC 'Whether OAuth2 client or scope is enabled'
+  EQUALITY booleanMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.11
+  NAME 'oauth2KeycloakId'
+  DESC 'Corresponding Keycloak internal UUID'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+################################################################################
+# DESIGN: All objectclasses are STRUCTURAL (not AUXILIARY) because these
+# entries live in their own cn=oauth2 subtree with dedicated containers.
+# AUXILIARY would only be needed if we were adding OAuth2 attrs to existing
+# IPA entries (e.g., krbPrincipal), which we intentionally avoid.
+################################################################################
+################################################################################
+# NHI (Non-Human Identity) Attribute Types
+################################################################################
+# DESIGN: SINGLE-VALUE because a workload has one canonical SPIFFE ID per
+# the SPIFFE spec (trust domain + path). Multiple IDs = multiple workloads.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.12
+  NAME 'oauth2SpiffeId'
+  DESC 'SPIFFE ID URI for workload identity'
+  EQUALITY caseIgnoreMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.13
+  NAME 'oauth2WorkloadType'
+  DESC 'Workload identity type: agent, service, or workload'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.14
+  NAME 'oauth2WorkloadOwner'
+  DESC 'IPA username of the system account that owns this workload'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.15
+  NAME 'oauth2WorkloadClient'
+  DESC 'OAuth2 client CN associated with this workload'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+# DESIGN: DelegateSource is SINGLE-VALUE (one rule = one acting workload).
+# DelegateTarget is multi-valued (one rule can cover many users/groups).
+# This models "workload X may impersonate users {A, B, C}" naturally.
+# Uses CN string names, not DNs, to avoid breakage on entry renames.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.16
+  NAME 'oauth2DelegateSource'
+  DESC 'Workload identity CN that may act on behalf of others'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.17
+  NAME 'oauth2DelegateTarget'
+  DESC 'User or group name that may be impersonated'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.18
+  NAME 'oauth2DelegateScope'
+  DESC 'OAuth2 scopes permitted during delegation'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.19
+  NAME 'oauth2DelegateHostgroup'
+  DESC 'IPA hostgroup name restricting where delegation applies'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.20
+  NAME 'oauth2MaxTokenLifetime'
+  DESC 'Maximum token lifetime override for this workload (seconds)'
+  EQUALITY integerMatch
+  ORDERING integerOrderingMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+# DESIGN: GeneralizedTime syntax enables LDAP-native time comparison in
+# filters. The ordering match allows "find all rules expiring before X".
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.21
+  NAME 'oauth2DelegateNotAfter'
+  DESC 'Delegation rule expiry time (GeneralizedTime)'
+  EQUALITY generalizedTimeMatch
+  ORDERING generalizedTimeOrderingMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.22
+  NAME 'oauth2DelegateService'
+  DESC 'Kerberos service principal the agent may access via S4U bridge'
+  EQUALITY caseIgnoreMatch
+  ORDERING caseIgnoreOrderingMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.23
+  NAME 'oauth2WorkloadServicePrincipal'
+  DESC 'IPA service principal associated with this workload identity'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+################################################################################
+# Trusted Vendor Attribute Types
+################################################################################
+# DESIGN: PEM-encoded CA cert for the vendor's code-signing chain.
+# Binary (Octet String) because PEM content includes base64 + headers.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.30
+  NAME 'oauth2VendorCACert'
+  DESC 'PEM-encoded vendor code-signing CA certificate'
+  EQUALITY octetStringMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+# DESIGN: Multi-valued scope ceiling. Any workload from this vendor is
+# limited to the intersection of these scopes and the delegation rule scopes.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.31
+  NAME 'oauth2VendorScope'
+  DESC 'Maximum OAuth2 scopes permitted for this vendor'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+# DESIGN: GeneralizedTime for vendor trust expiry. Forces periodic
+# re-evaluation of third-party trust relationships.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.32
+  NAME 'oauth2VendorNotAfter'
+  DESC 'Vendor trust expiry time (GeneralizedTime)'
+  EQUALITY generalizedTimeMatch
+  ORDERING generalizedTimeOrderingMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.33
+  NAME 'oauth2VendorContact'
+  DESC 'Vendor contact email for trust lifecycle notifications'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.34
+  NAME 'oauth2VendorRekorURL'
+  DESC 'Vendor Rekor transparency log URL for signature verification'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+# DESIGN: DN reference to link a workload back to its vendor entry.
+# Stored as a DN string so LDAP tools can follow the reference.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.35
+  NAME 'oauth2WorkloadVendor'
+  DESC 'DN of the trusted vendor that supplied this workload'
+  EQUALITY distinguishedNameMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+################################################################################
+# Agent Card / Discovery Attribute Types (Phase 23)
+################################################################################
+# DESIGN: Multi-valued free-form skill tags for capability-based A2A discovery.
+# Agents declare what they can do; other agents discover peers by skill.
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.40
+  NAME 'oauth2WorkloadSkill'
+  DESC 'Agent skill tag for capability-based discovery'
+  EQUALITY caseIgnoreMatch
+  SUBSTR caseIgnoreSubstringsMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.41
+  NAME 'oauth2WorkloadCardTTL'
+  DESC 'Agent card validity in seconds (default 3600)'
+  EQUALITY integerMatch
+  ORDERING integerOrderingMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.42
+  NAME 'oauth2DelegateRequireAttestation'
+  DESC 'Require Keylime/Trustee attestation before granting delegation'
+  EQUALITY booleanMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+  SINGLE-VALUE
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.43
+  NAME 'oauth2RevokedJTI'
+  DESC 'Revoked JWT ID (JTI) - token with this JTI must be rejected'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  X-ORIGIN 'IPA v4 OAuth2' )
+attributeTypes: ( 2.16.840.1.113730.3.8.24.1.44
+  NAME 'oauth2SchemaVersion'
+  DESC 'WID LDAP schema version for migration tracking'
+  EQUALITY caseIgnoreMatch
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+  SINGLE-VALUE
+  X-ORIGIN 'IPA OAuth2 Plugin' )
+objectClasses: ( 2.16.840.1.113730.3.8.24.2.1
+  NAME 'oauth2Client'
+  DESC 'OAuth2/OIDC client registration'
+  SUP top
+  STRUCTURAL
+  MUST ( cn $ oauth2ClientId )
+  MAY ( oauth2ClientSecret $ oauth2RedirectURI $ oauth2GrantType $
+        oauth2Scope $ oauth2TokenLifetime $ oauth2RefreshTokenLifetime $
+        oauth2ClientType $ oauth2Enabled $ oauth2KeycloakId $
+        description $ member )
+  X-ORIGIN 'IPA v4 OAuth2' )
+objectClasses: ( 2.16.840.1.113730.3.8.24.2.2
+  NAME 'oauth2ScopeDefinition'
+  DESC 'OAuth2 scope definition'
+  SUP top
+  STRUCTURAL
+  MUST ( cn $ oauth2Scope )
+  MAY ( oauth2ScopeDescription $ oauth2Enabled )
+  X-ORIGIN 'IPA v4 OAuth2' )
+objectClasses: ( 2.16.840.1.113730.3.8.24.2.3
+  NAME 'oauth2Config'
+  DESC 'Global OAuth2 subsystem configuration'
+  SUP top
+  STRUCTURAL
+  MUST ( cn )
+  MAY ( oauth2Enabled $ oauth2TokenLifetime $ oauth2RefreshTokenLifetime $
+        oauth2SchemaVersion $ description )
+  X-ORIGIN 'IPA v4 OAuth2' )
+################################################################################
+# Trusted Vendor Object Class
+################################################################################
+objectClasses: ( 2.16.840.1.113730.3.8.24.2.6
+  NAME 'oauth2TrustedVendor'
+  DESC 'Trusted third-party vendor for signed binary attestation'
+  SUP top
+  STRUCTURAL
+  MUST ( cn $ oauth2VendorCACert )
+  MAY ( oauth2VendorScope $ oauth2VendorNotAfter $ oauth2VendorContact $
+        oauth2VendorRekorURL $ oauth2Enabled $ description )
+  X-ORIGIN 'IPA v4 OAuth2' )
+################################################################################
+# NHI (Non-Human Identity) Object Classes
+################################################################################
+objectClasses: ( 2.16.840.1.113730.3.8.24.2.4
+  NAME 'oauth2WorkloadIdentity'
+  DESC 'Non-human identity (agent, service, or workload)'
+  SUP top
+  STRUCTURAL
+  MUST ( cn $ oauth2WorkloadType )
+  MAY ( oauth2SpiffeId $ oauth2WorkloadOwner $ oauth2WorkloadClient $
+        oauth2WorkloadServicePrincipal $ oauth2WorkloadVendor $
+        oauth2Enabled $ oauth2MaxTokenLifetime $ oauth2WorkloadSkill $
+        oauth2WorkloadCardTTL $ oauth2RevokedJTI $ description )
+  X-ORIGIN 'IPA v4 OAuth2' )
+objectClasses: ( 2.16.840.1.113730.3.8.24.2.5
+  NAME 'oauth2DelegationRule'
+  DESC 'On-behalf-of delegation authorization rule'
+  SUP top
+  STRUCTURAL
+  MUST ( cn $ oauth2DelegateSource )
+  MAY ( oauth2DelegateTarget $ oauth2DelegateScope $
+        oauth2DelegateHostgroup $ oauth2DelegateService $
+        oauth2DelegateNotAfter $ oauth2DelegateRequireAttestation $
+        oauth2Enabled $ description )
+  X-ORIGIN 'IPA v4 OAuth2' )

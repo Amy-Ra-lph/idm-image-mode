@@ -37,6 +37,10 @@ COPY config/idm-post-upgrade.sh /usr/local/sbin/idm-post-upgrade
 COPY config/idm-post-upgrade.service /etc/systemd/system/idm-post-upgrade.service
 COPY config/config.env.example /etc/idm-image-mode/config.env.example
 
+# Post-upgrade hooks and schema for OAuth2/WID stack
+COPY config/post-upgrade.d/ /usr/local/lib/idm-image-mode/post-upgrade.d/
+COPY config/schema/ /usr/local/lib/idm-image-mode/schema/
+
 # Lab access — root password + claude user with SSH key and sudo
 RUN echo 'root:Secret123!' | chpasswd \
     && useradd -m -G wheel cloud-user \
