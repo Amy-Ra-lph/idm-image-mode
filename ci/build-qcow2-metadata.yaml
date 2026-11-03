@@ -56,6 +56,7 @@ phases:
             # privileged build write the output dir under SELinux.
             podman run --rm --privileged --pull=newer \
               --security-opt label=type:unconfined_t \
+              -v /var/lib/containers/storage:/var/lib/containers/storage \
               -v "${out}:/output" \
               quay.io/centos-bootc/bootc-image-builder:latest \
               --rootfs xfs --type qcow2 \
