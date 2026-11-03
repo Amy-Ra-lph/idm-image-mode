@@ -25,18 +25,25 @@ if [[ -z "$INSTANCE_DIR" ]]; then
     exit 1
 fi
 
+INSTANCE_NAME=$(basename "$INSTANCE_DIR")
+SOCKET_PATH="/run/${INSTANCE_NAME}.socket"
+if [[ -S "$SOCKET_PATH" ]]; then
+    LDAPI_URI="ldapi://$(echo "$SOCKET_PATH" | sed 's|/|%2F|g')"
+else
+    LDAPI_URI="ldapi:///"
+fi
+
 SCHEMA_DST="$INSTANCE_DIR/schema/80oauth2.ldif"
 if ! diff -q "$SCHEMA_SRC" "$SCHEMA_DST" &>/dev/null; then
     echo "Installing 80oauth2.ldif -> $SCHEMA_DST"
     cp "$SCHEMA_SRC" "$SCHEMA_DST"
 
-    INSTANCE_NAME=$(basename "$INSTANCE_DIR")
     echo "Restarting dirsrv@${INSTANCE_NAME#slapd-}"
     systemctl restart "dirsrv@${INSTANCE_NAME#slapd-}"
 
     retries=12
     for i in $(seq 1 "$retries"); do
-        ldapwhoami -Y EXTERNAL -H ldapi:/// 2>/dev/null && break
+        ldapwhoami -Y EXTERNAL -H "$LDAPI_URI" 2>/dev/null && break
         echo "Waiting for DS restart... ($i/$retries)"
         sleep 5
     done
@@ -46,12 +53,12 @@ fi
 
 create_container() {
     local dn="$1" cn="$2"
-    if ldapsearch -Y EXTERNAL -H ldapi:/// -b "$dn" -s base '(objectClass=*)' dn 2>/dev/null | grep -q "^dn:"; then
+    if ldapsearch -Y EXTERNAL -H "$LDAPI_URI" -b "$dn" -s base '(objectClass=*)' dn 2>/dev/null | grep -q "^dn:"; then
         echo "DIT container exists: $dn"
         return 0
     fi
     echo "Creating DIT container: $dn"
-    ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+    ldapadd -Y EXTERNAL -H "$LDAPI_URI" <<EOF
 dn: $dn
 objectClass: top
 objectClass: nsContainer
@@ -61,12 +68,12 @@ EOF
 
 create_config_entry() {
     local dn="cn=config,cn=oauth2,$SUFFIX_DN"
-    if ldapsearch -Y EXTERNAL -H ldapi:/// -b "$dn" -s base '(objectClass=*)' dn 2>/dev/null | grep -q "^dn:"; then
+    if ldapsearch -Y EXTERNAL -H "$LDAPI_URI" -b "$dn" -s base '(objectClass=*)' dn 2>/dev/null | grep -q "^dn:"; then
         echo "Config entry exists: $dn"
         return 0
     fi
     echo "Creating config entry: $dn"
-    ldapadd -Y EXTERNAL -H ldapi:/// <<EOF
+    ldapadd -Y EXTERNAL -H "$LDAPI_URI" <<EOF
 dn: $dn
 objectClass: top
 objectClass: oauth2Config
