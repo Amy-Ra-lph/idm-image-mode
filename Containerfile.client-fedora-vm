@@ -1,0 +1,39 @@
+# Containerfile.client-fedora-vm — Fedora bootc VM image for FreeIPA/IdM client
+#
+# KVM-ready image with cloud-init, qemu-guest-agent, firstboot provisioning.
+# Set IDM_ROLE=client in config.env to enroll via ipa-client-install.
+#
+# Build:
+#   podman build -t localhost/idm-image-mode-client-fedora:latest \
+#     -f Containerfile.client-fedora-vm .
+#
+# Convert to qcow2 for KVM:
+#   sudo podman run --rm -it --privileged --pull=newer \
+#     -v /var/lib/containers/storage:/var/lib/containers/storage \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --rootfs xfs --type qcow2 \
+#     localhost/idm-image-mode-client-fedora:latest
+
+FROM quay.io/fedora/fedora-bootc:44
+
+RUN dnf install -y \
+        freeipa-client \
+        freeipa-admintools \
+        cloud-init \
+        qemu-guest-agent \
+    && dnf clean all
+
+COPY config/idm-firstboot.sh /usr/local/sbin/idm-firstboot
+COPY config/idm-firstboot.service /etc/systemd/system/idm-firstboot.service
+COPY config/config.env.example /etc/idm-image-mode/config.env.example
+
+# Lab access
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+RUN chmod 755 /usr/local/sbin/idm-firstboot \
+    && mkdir -p /var/lib/idm-image-mode \
+    && systemctl enable idm-firstboot.service qemu-guest-agent.service
