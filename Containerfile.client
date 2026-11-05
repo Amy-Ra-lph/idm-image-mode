@@ -13,6 +13,7 @@ FROM quay.io/fedora/fedora-bootc:44
 RUN dnf install -y \
         freeipa-client \
         freeipa-admintools \
+        sshpass \
     && dnf clean all
 
 # Install the first-boot provisioning service

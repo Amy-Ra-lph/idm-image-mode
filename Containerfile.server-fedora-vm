@@ -21,6 +21,7 @@ RUN dnf install -y \
         freeipa-server \
         freeipa-server-dns \
         freeipa-server-trust-ad \
+        sshpass \
         cloud-init \
         qemu-guest-agent \
     && dnf clean all

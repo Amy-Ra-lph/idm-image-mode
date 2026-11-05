@@ -21,6 +21,7 @@ RUN dnf install -y \
         freeipa-server \
         freeipa-server-dns \
         freeipa-server-trust-ad \
+        sshpass \
     && dnf clean all
 
 # dbus-broker fails in containers (inotify limit); use classic dbus-daemon

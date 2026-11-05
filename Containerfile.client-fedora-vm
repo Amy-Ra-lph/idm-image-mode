@@ -20,6 +20,7 @@ FROM quay.io/fedora/fedora-bootc:44
 RUN dnf install -y \
         freeipa-client \
         freeipa-admintools \
+        sshpass \
         cloud-init \
         qemu-guest-agent \
     && dnf clean all
