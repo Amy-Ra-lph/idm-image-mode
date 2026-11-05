@@ -102,14 +102,14 @@ ipa_add ipa group-add svc-accounts --desc="Non-human service accounts"
 ipa_add ipa group-add privileged-ops --desc="Nested: it-admins + devops"
 
 # Memberships
-ipa_add ipa group-add-member it-admins    --users=sysadmin1,sysadmin2,secadmin1
-ipa_add ipa group-add-member devops       --users=deployer1,deployer2,sre1
-ipa_add ipa group-add-member developers   --users=dev1,dev2,dev3
-ipa_add ipa group-add-member dba          --users=dba1,dba2
-ipa_add ipa group-add-member svc-accounts --users=svc-monitoring,svc-backup
+ipa_add ipa group-add-member it-admins    --users=sysadmin1 --users=sysadmin2 --users=secadmin1
+ipa_add ipa group-add-member devops       --users=deployer1 --users=deployer2 --users=sre1
+ipa_add ipa group-add-member developers   --users=dev1 --users=dev2 --users=dev3
+ipa_add ipa group-add-member dba          --users=dba1 --users=dba2
+ipa_add ipa group-add-member svc-accounts --users=svc-monitoring --users=svc-backup
 
 # Nested group
-ipa_add ipa group-add-member privileged-ops --groups=it-admins,devops
+ipa_add ipa group-add-member privileged-ops --groups=it-admins --groups=devops
 
 ok "6 groups with memberships"
 
@@ -218,12 +218,12 @@ ok "4 sudo rules with command groups"
 # ── Password Policies ──────────────────────────────────────────────
 section "Password Policies (3)"
 
-# Global default
-ipa_add ipa pwpolicy-mod --minlength=12 --maxlife=7776000 --minclasses=3
+# Global default (maxlife is in days)
+ipa_add ipa pwpolicy-mod --minlength=12 --maxlife=90 --minclasses=3
 
 # IT admins — stricter
 ipa_add ipa pwpolicy-add it-admins \
-    --minlength=16 --maxlife=5184000 --minclasses=4 --priority=10
+    --minlength=16 --maxlife=60 --minclasses=4 --priority=10
 
 # Service accounts — long passwords, no expiry
 ipa_add ipa pwpolicy-add svc-accounts \
@@ -235,11 +235,11 @@ ok "3 password policies (global + it-admins + svc-accounts)"
 section "Automember Rules (2)"
 
 ipa_add ipa automember-default-group-set --type=group --default-group=developers
-ipa_add ipa automember-add --type=group it-admins-auto
-ipa_add ipa automember-add-condition it-admins-auto --type=group \
+ipa_add ipa automember-add --type=group it-admins
+ipa_add ipa automember-add-condition it-admins --type=group \
     --key=departmentnumber --inclusive-regex='^100$'
-ipa_add ipa automember-add --type=group devops-auto
-ipa_add ipa automember-add-condition devops-auto --type=group \
+ipa_add ipa automember-add --type=group devops
+ipa_add ipa automember-add-condition devops --type=group \
     --key=departmentnumber --inclusive-regex='^150$'
 
 ok "2 automember rules (dept 100→it-admins, 150→devops) + default→developers"

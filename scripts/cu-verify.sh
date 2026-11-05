@@ -244,9 +244,9 @@ assert_output "svc-accounts pwpolicy minlength=24" "24" ipa pwpolicy-show svc-ac
 section "Automember Rules"
 
 assert "automember it-admins-auto exists" \
-    ipa automember-show --type=group it-admins-auto
+    ipa automember-show --type=group it-admins
 assert "automember devops-auto exists" \
-    ipa automember-show --type=group devops-auto
+    ipa automember-show --type=group devops
 
 # Post-upgrade: test that automember still triggers
 if [[ "$STAGE" == "post-upgrade" || "$STAGE" == "post-rollback" ]]; then
