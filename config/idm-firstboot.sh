@@ -280,8 +280,10 @@ cn: delegations
 LDIF
         }
 
-        # Restart httpd to reload IPA plugins with new schema
-        systemctl restart httpd 2>/dev/null || true
+        # ipactl restart reloads the IPA framework — picks up new plugins
+        # from ipaserver/plugins/ that depend on the schema we just loaded.
+        # httpd restart alone is not enough (plugins aren't re-scanned).
+        ipactl restart 2>/dev/null || systemctl restart httpd 2>/dev/null || true
         log_ok "OAuth2 schema and containers ready"
     fi
 fi
@@ -319,15 +321,33 @@ if command -v ahdapactl &>/dev/null && [[ "$IDM_ROLE" != "client" ]]; then
     # Ensure httpd proxy config for /idp/ exists — ahdapa RPM ships it,
     # but on bootc the post-install scriptlet may not run.
     if [[ ! -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]]; then
-        AHDAPA_PORT="${AHDAPA_PORT:-8900}"
-        cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
+        AHDAPA_SOCK="/run/ahdapa/ahdapa.sock"
+        if [[ -S "$AHDAPA_SOCK" ]]; then
+            cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
+RedirectMatch permanent ^/idp\$ /idp/
+
+<Location "/idp/">
+    AuthType None
+    Require all granted
+    ProxyPass        unix:${AHDAPA_SOCK}|http://ahdapa-local/  nocanon
+    ProxyPassReverse http://ahdapa-local/
+    ProxyPassReverseCookiePath / /idp/
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "https"
+</Location>
+PROXY
+            log_info "Created httpd proxy config for /idp/ → ahdapa socket"
+        else
+            AHDAPA_PORT="${AHDAPA_PORT:-8900}"
+            cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
 ProxyPass /idp/ http://127.0.0.1:${AHDAPA_PORT}/
 ProxyPassReverse /idp/ http://127.0.0.1:${AHDAPA_PORT}/
 <Location /idp>
     Require all granted
 </Location>
 PROXY
-        log_info "Created httpd proxy config for /idp/ → ahdapa:${AHDAPA_PORT}"
+            log_info "Created httpd proxy config for /idp/ → ahdapa:${AHDAPA_PORT} (TCP fallback)"
+        fi
     fi
 
     # CORS config for browser OIDC token exchange
