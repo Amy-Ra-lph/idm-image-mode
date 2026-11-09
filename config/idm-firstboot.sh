@@ -71,6 +71,16 @@ if [[ -n "${IDM_SERVER_IP:-}" && -n "${IDM_SERVER_FQDN:-}" ]]; then
     fi
 fi
 
+# ── SELinux Relabel for bootc ────────────────────────────────────────
+# On bootc, /var survives image switches but SELinux contexts don't get
+# relabeled. RPM scriptlets that handle this on mutable RHEL don't run.
+if [[ -f /run/ostree-booted ]]; then
+    log_info "bootc detected — relabeling /var/lib directories for SELinux"
+    for dir in /var/lib/dirsrv /var/lib/ipa /var/lib/certmonger /var/lib/pki; do
+        [[ -d "$dir" ]] && restorecon -Rv "$dir" 2>/dev/null || true
+    done
+fi
+
 # ── Install Based on Role ────────────────────────────────────────────
 case "$IDM_ROLE" in
     primary)
