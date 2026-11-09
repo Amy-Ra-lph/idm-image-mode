@@ -209,6 +209,73 @@ case "$IDM_ROLE" in
         ;;
 esac
 
+# ── OAuth2 LDAP Schema + Plugin Registration ──────────────────────
+# IPA plugins in ipaserver/plugins/ need their LDAP schema loaded into DS
+# and container entries created. On bootc, these can't be baked into the
+# image because the DS instance doesn't exist until ipa-server-install runs.
+
+OAUTH2_SCHEMA="/usr/local/lib/idm-image-mode/schema/80oauth2.ldif"
+if [[ -f "$OAUTH2_SCHEMA" && "$IDM_ROLE" == "primary" ]]; then
+    DS_INSTANCE=$(ls -1d /etc/dirsrv/slapd-* 2>/dev/null | head -1)
+    if [[ -n "$DS_INSTANCE" ]]; then
+        DS_SCHEMA_DIR="${DS_INSTANCE}/schema"
+        if [[ ! -f "${DS_SCHEMA_DIR}/80oauth2.ldif" ]]; then
+            log_info "Loading OAuth2 LDAP schema into DS"
+            cp "$OAUTH2_SCHEMA" "${DS_SCHEMA_DIR}/80oauth2.ldif"
+            systemctl restart "dirsrv@$(basename "$DS_INSTANCE" | sed 's/slapd-//')"
+            sleep 3
+        fi
+
+        # Create OAuth2 container entries if missing
+        BASEDN="dc=${IDM_DOMAIN//./,dc=}"
+        ldapsearch -x -D "cn=Directory Manager" -w "${IDM_DS_PASSWORD}" \
+            -b "cn=oauth2,${BASEDN}" -s base "(objectClass=*)" dn 2>/dev/null || {
+            log_info "Creating OAuth2 container entries under ${BASEDN}"
+            ldapmodify -x -D "cn=Directory Manager" -w "${IDM_DS_PASSWORD}" <<LDIF
+dn: cn=oauth2,${BASEDN}
+changetype: add
+objectClass: top
+objectClass: nsContainer
+cn: oauth2
+
+dn: cn=clients,cn=oauth2,${BASEDN}
+changetype: add
+objectClass: top
+objectClass: nsContainer
+cn: clients
+
+dn: cn=scopes,cn=oauth2,${BASEDN}
+changetype: add
+objectClass: top
+objectClass: nsContainer
+cn: scopes
+
+dn: cn=workloads,cn=oauth2,${BASEDN}
+changetype: add
+objectClass: top
+objectClass: nsContainer
+cn: workloads
+
+dn: cn=vendors,cn=oauth2,${BASEDN}
+changetype: add
+objectClass: top
+objectClass: nsContainer
+cn: vendors
+
+dn: cn=delegations,cn=oauth2,${BASEDN}
+changetype: add
+objectClass: top
+objectClass: nsContainer
+cn: delegations
+LDIF
+        }
+
+        # Restart httpd to reload IPA plugins with new schema
+        systemctl restart httpd 2>/dev/null || true
+        log_ok "OAuth2 schema and containers ready"
+    fi
+fi
+
 # ── ahdapa OAuth2/OIDC Configuration ────────────────────────────────
 # Runs after IPA install on primary/replica when ahdapa is installed.
 # Configures CORS for browser-based OIDC and ensures ahdapa is running.
@@ -216,11 +283,42 @@ esac
 if command -v ahdapactl &>/dev/null && [[ "$IDM_ROLE" != "client" ]]; then
     log_info "Configuring ahdapa OIDC provider..."
 
-    # Wait for ahdapa to be running (IPA installer enables it)
-    for i in $(seq 1 30); do
-        ipactl status 2>/dev/null | grep -q "ahdapa Service: RUNNING" && break
-        sleep 2
-    done
+    # On bootc images, ipa-server-install doesn't register COPR ahdapa with
+    # ipactl — start it explicitly if ipactl doesn't manage it.
+    if ipactl status 2>/dev/null | grep -q "ahdapa Service"; then
+        log_info "ahdapa managed by ipactl"
+        if ! ipactl status 2>/dev/null | grep -q "ahdapa Service: RUNNING"; then
+            ipactl start ahdapa 2>/dev/null || true
+        fi
+    else
+        log_info "ahdapa not in ipactl — starting via systemctl"
+        systemctl enable ahdapa 2>/dev/null || true
+        systemctl start ahdapa
+        for i in $(seq 1 15); do
+            systemctl is-active ahdapa &>/dev/null && break
+            sleep 2
+        done
+        if systemctl is-active ahdapa &>/dev/null; then
+            log_ok "ahdapa started via systemctl"
+        else
+            log_err "ahdapa failed to start"
+            journalctl -u ahdapa --no-pager -n 20 >&2
+        fi
+    fi
+
+    # Ensure httpd proxy config for /idp/ exists — ahdapa RPM ships it,
+    # but on bootc the post-install scriptlet may not run.
+    if [[ ! -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]]; then
+        AHDAPA_PORT="${AHDAPA_PORT:-8900}"
+        cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
+ProxyPass /idp/ http://127.0.0.1:${AHDAPA_PORT}/
+ProxyPassReverse /idp/ http://127.0.0.1:${AHDAPA_PORT}/
+<Location /idp>
+    Require all granted
+</Location>
+PROXY
+        log_info "Created httpd proxy config for /idp/ → ahdapa:${AHDAPA_PORT}"
+    fi
 
     # CORS config for browser OIDC token exchange
     if [[ ! -f /etc/httpd/conf.d/ipa-idp-cors.conf ]]; then
