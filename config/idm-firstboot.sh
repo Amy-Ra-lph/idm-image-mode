@@ -318,10 +318,35 @@ if command -v ahdapactl &>/dev/null && [[ "$IDM_ROLE" != "client" ]]; then
         fi
     fi
 
-    # Ensure httpd proxy config for /idp/ exists — ahdapa RPM ships it,
-    # but on bootc the post-install scriptlet may not run.
+    # On bootc, the ahdapa RPM's semodule -i may not persist from image
+    # build. Re-load the SELinux policy module and relabel the socket so
+    # httpd (running as apache) can connect via the ahdapa_var_run_t type.
+    if [[ -f /run/ostree-booted ]]; then
+        AHDAPA_PP="/usr/share/selinux/packages/ahdapa.pp"
+        if [[ -f "$AHDAPA_PP" ]] && ! semodule -l 2>/dev/null | grep -q "^ahdapa$"; then
+            log_info "Loading ahdapa SELinux policy module"
+            semodule -i "$AHDAPA_PP" 2>/dev/null || log_err "semodule -i ahdapa.pp failed"
+        fi
+        restorecon -Rv /run/ahdapa 2>/dev/null || true
+        restorecon -Rv /etc/ahdapa 2>/dev/null || true
+        restorecon -Rv /var/lib/ahdapa 2>/dev/null || true
+    fi
+
+    # Ensure httpd proxy config for /idp/ exists — ahdapa RPM ships a
+    # template at /usr/share/doc/ but doesn't deploy it on install.
+    AHDAPA_SOCK="/run/ahdapa/ahdapa.sock"
+    if [[ -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]]; then
+        if grep -q "unix:.*ahdapa" /etc/httpd/conf.d/ipa-idp-proxy.conf 2>/dev/null; then
+            log_info "Proxy config exists with socket reference — keeping"
+        elif [[ -S "$AHDAPA_SOCK" ]]; then
+            log_info "Proxy config exists but missing socket ref — replacing"
+            rm -f /etc/httpd/conf.d/ipa-idp-proxy.conf
+        else
+            log_info "Proxy config exists (no socket yet) — keeping"
+        fi
+    fi
+
     if [[ ! -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]]; then
-        AHDAPA_SOCK="/run/ahdapa/ahdapa.sock"
         if [[ -S "$AHDAPA_SOCK" ]]; then
             cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
 RedirectMatch permanent ^/idp\$ /idp/
@@ -372,7 +397,8 @@ CORS
         fi
     fi
 
-    systemctl reload httpd 2>/dev/null || true
+    # Full restart (not reload) to pick up proxy conf + SELinux policy changes
+    systemctl restart httpd 2>/dev/null || ipactl restart 2>/dev/null || true
 
     # Register OAuth2 clients from config.env if provided
     if [[ -n "${AHDAPA_CLIENT_ID:-}" && -n "${AHDAPA_CLIENT_SECRET:-}" ]]; then
