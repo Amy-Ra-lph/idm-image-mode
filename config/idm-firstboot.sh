@@ -295,6 +295,85 @@ fi
 if command -v ahdapactl &>/dev/null && [[ "$IDM_ROLE" != "client" ]]; then
     log_info "Configuring ahdapa OIDC provider..."
 
+    # Generate ahdapa.toml if it doesn't exist — the RPM ships only an example.
+    if [[ ! -f /etc/ahdapa/ahdapa.toml ]]; then
+        AHDAPA_FQDN=$(hostname -f)
+        AHDAPA_REALM=$(grep -oP '(?<=default_realm = ).*' /etc/krb5.conf 2>/dev/null || echo "$IDM_REALM")
+        AHDAPA_ISSUER="https://${AHDAPA_FQDN}/idp"
+        AHDAPA_DB="/var/lib/ahdapa/ahdapa.db"
+        AHDAPA_KEYTAB="/var/lib/ipa/gssproxy/http.keytab"
+
+        cat > /etc/ahdapa/ahdapa.toml <<TOMLEOF
+[server]
+issuer       = "${AHDAPA_ISSUER}"
+realm        = "${AHDAPA_REALM}"
+display_name = "IdM ${AHDAPA_REALM}"
+listen       = "unix:/run/ahdapa/ahdapa.sock"
+
+[db]
+url             = "sqlite://${AHDAPA_DB}"
+max_connections = 5
+
+[gssapi]
+service             = "HTTP"
+gssproxy            = true
+initiator_principal = "HTTP/${AHDAPA_FQDN}@${AHDAPA_REALM}"
+
+[ipa]
+uri    = "ldaps://${AHDAPA_FQDN}"
+gssapi = true
+
+[webui]
+static_dir = "/usr/share/ahdapa/webui"
+
+[tokens]
+access_token_ttl  = 3600
+refresh_token_ttl = 28800
+auth_code_ttl     = 60
+session_ttl       = 7200
+
+[clients]
+file = "/etc/ahdapa/clients.toml"
+
+[gossip]
+peers = []
+
+[[rbac.role]]
+name        = "admin"
+permissions = ["*"]
+
+[[rbac.group_role]]
+group = "admins"
+role  = "admin"
+TOMLEOF
+        chown ahdapa:ahdapa /etc/ahdapa/ahdapa.toml
+        chmod 640 /etc/ahdapa/ahdapa.toml
+        log_ok "Generated /etc/ahdapa/ahdapa.toml (issuer=${AHDAPA_ISSUER})"
+    fi
+
+    # Ensure socket directory exists with correct ownership
+    mkdir -p /run/ahdapa
+    chown ahdapa:ahdapa /run/ahdapa
+    chmod 750 /run/ahdapa
+    # httpd (apache user) needs group access to the ahdapa socket
+    usermod -aG ahdapa apache 2>/dev/null || true
+
+    # Add gssproxy config so ahdapa can use the HTTP keytab
+    if [[ ! -f /etc/gssproxy/24-ahdapa.conf ]]; then
+        cat > /etc/gssproxy/24-ahdapa.conf <<'GSSPEOF'
+[service/ipa-ahdapa]
+  mechs = krb5
+  cred_store = keytab:/var/lib/ipa/gssproxy/http.keytab
+  cred_store = client_keytab:/var/lib/ipa/gssproxy/http.keytab
+  allow_protocol_transition = true
+  allow_client_ccache_sync = true
+  cred_usage = both
+  euid = ahdapa
+GSSPEOF
+        systemctl restart gssproxy 2>/dev/null || true
+        log_info "gssproxy config added for ahdapa"
+    fi
+
     # On bootc images, ipa-server-install doesn't register COPR ahdapa with
     # ipactl — start it explicitly if ipactl doesn't manage it.
     if ipactl status 2>/dev/null | grep -q "ahdapa Service"; then
