@@ -351,6 +351,14 @@ TOMLEOF
         log_ok "Generated /etc/ahdapa/ahdapa.toml (issuer=${AHDAPA_ISSUER})"
     fi
 
+    # ahdapa exits fatally if the static clients file is missing — seed an
+    # empty one so the service can start before client registration runs.
+    if [[ ! -f /etc/ahdapa/clients.toml ]]; then
+        touch /etc/ahdapa/clients.toml
+        chown ahdapa:ahdapa /etc/ahdapa/clients.toml
+        chmod 640 /etc/ahdapa/clients.toml
+    fi
+
     # Ensure socket directory exists with correct ownership
     mkdir -p /run/ahdapa
     chown ahdapa:ahdapa /run/ahdapa
