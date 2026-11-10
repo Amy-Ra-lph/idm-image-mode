@@ -385,14 +385,14 @@ GSSPEOF
         log_info "ahdapa not in ipactl — starting via systemctl"
         systemctl enable ahdapa 2>/dev/null || true
         systemctl start ahdapa
-        for i in $(seq 1 15); do
-            systemctl is-active ahdapa &>/dev/null && break
+        for i in $(seq 1 30); do
+            systemctl is-active ahdapa &>/dev/null && [[ -S /run/ahdapa/ahdapa.sock ]] && break
             sleep 2
         done
-        if systemctl is-active ahdapa &>/dev/null; then
-            log_ok "ahdapa started via systemctl"
+        if systemctl is-active ahdapa &>/dev/null && [[ -S /run/ahdapa/ahdapa.sock ]]; then
+            log_ok "ahdapa started via systemctl (socket ready)"
         else
-            log_err "ahdapa failed to start"
+            log_err "ahdapa failed to start or socket not created"
             journalctl -u ahdapa --no-pager -n 20 >&2
         fi
     fi
@@ -411,23 +411,12 @@ GSSPEOF
         restorecon -Rv /var/lib/ahdapa 2>/dev/null || true
     fi
 
-    # Ensure httpd proxy config for /idp/ exists — ahdapa RPM ships a
-    # template at /usr/share/doc/ but doesn't deploy it on install.
+    # httpd proxy for /idp/ → ahdapa Unix socket. Always overwrite to
+    # match the socket path we configured in ahdapa.toml above.
     AHDAPA_SOCK="/run/ahdapa/ahdapa.sock"
-    if [[ -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]]; then
-        if grep -q "unix:.*ahdapa" /etc/httpd/conf.d/ipa-idp-proxy.conf 2>/dev/null; then
-            log_info "Proxy config exists with socket reference — keeping"
-        elif [[ -S "$AHDAPA_SOCK" ]]; then
-            log_info "Proxy config exists but missing socket ref — replacing"
-            rm -f /etc/httpd/conf.d/ipa-idp-proxy.conf
-        else
-            log_info "Proxy config exists (no socket yet) — keeping"
-        fi
-    fi
-
-    if [[ ! -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]]; then
-        if [[ -S "$AHDAPA_SOCK" ]]; then
-            cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
+    if [[ ! -f /etc/httpd/conf.d/ipa-idp-proxy.conf ]] || \
+       ! grep -q "unix:.*ahdapa" /etc/httpd/conf.d/ipa-idp-proxy.conf 2>/dev/null; then
+        cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
 RedirectMatch permanent ^/idp\$ /idp/
 
 <Location "/idp/">
@@ -440,18 +429,7 @@ RedirectMatch permanent ^/idp\$ /idp/
     RequestHeader set X-Forwarded-Proto "https"
 </Location>
 PROXY
-            log_info "Created httpd proxy config for /idp/ → ahdapa socket"
-        else
-            AHDAPA_PORT="${AHDAPA_PORT:-8900}"
-            cat > /etc/httpd/conf.d/ipa-idp-proxy.conf <<PROXY
-ProxyPass /idp/ http://127.0.0.1:${AHDAPA_PORT}/
-ProxyPassReverse /idp/ http://127.0.0.1:${AHDAPA_PORT}/
-<Location /idp>
-    Require all granted
-</Location>
-PROXY
-            log_info "Created httpd proxy config for /idp/ → ahdapa:${AHDAPA_PORT} (TCP fallback)"
-        fi
+        log_info "Created httpd proxy config for /idp/ → ahdapa socket"
     fi
 
     # CORS config for browser OIDC token exchange
