@@ -371,6 +371,7 @@ TOMLEOF
   euid = ahdapa
 GSSPEOF
         systemctl restart gssproxy 2>/dev/null || true
+        sleep 3
         log_info "gssproxy config added for ahdapa"
     fi
 
@@ -384,6 +385,7 @@ GSSPEOF
     else
         log_info "ahdapa not in ipactl — starting via systemctl"
         systemctl enable ahdapa 2>/dev/null || true
+        systemctl reset-failed ahdapa 2>/dev/null || true
         systemctl start ahdapa
         for i in $(seq 1 30); do
             systemctl is-active ahdapa &>/dev/null && [[ -S /run/ahdapa/ahdapa.sock ]] && break
