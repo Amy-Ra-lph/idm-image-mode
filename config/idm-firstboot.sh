@@ -538,4 +538,15 @@ allowed_token_exchange_audiences = [\"${SPIRE_ISSUER}\"]
     log_ok "ahdapa OIDC provider configured"
 fi
 
+# ── Redact secrets from config.env ──────────────────────────────────
+# config.env is only needed during first boot. Redact password fields
+# so they are not exposed on the running system.
+if [[ -f "$CONFIG_FILE" ]]; then
+    sed -i 's/\(PASSWORD\s*=\s*\).*/\1<REDACTED>/' "$CONFIG_FILE"
+    sed -i 's/\(SECRET\s*=\s*\).*/\1<REDACTED>/' "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    chown root:root "$CONFIG_FILE"
+    log_info "Redacted secrets from $CONFIG_FILE"
+fi
+
 log_ok "First boot provisioning complete (role=${IDM_ROLE})"
